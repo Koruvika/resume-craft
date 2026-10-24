@@ -6,7 +6,7 @@ def test_defaults() -> None:
     assert settings.app_env == "dev"
     assert (
         settings.database_url
-        == "postgresql+asyncpg://resumecraft:resumecraft@localhost:5432/resumecraft"
+        == "postgresql+asyncpg://resumecraft:resumecraft@localhost:5434/resumecraft"
     )
     assert settings.redis_url == "redis://localhost:6379/0"
     assert settings.llm_model == "gpt-4o-mini"

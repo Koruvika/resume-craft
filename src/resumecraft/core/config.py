@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Postgres — components, not DSN, so passwords with special chars are never URL-parsed.
     database_host: str = "localhost"
-    database_port: int = 5432
+    database_port: int = 5434
     database_user: str = "resumecraft"
     database_password: SecretStr = SecretStr("resumecraft")
     database_name: str = "resumecraft"
