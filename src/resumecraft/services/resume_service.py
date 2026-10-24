@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from resumecraft.ai.llm.client import get_chat_model
 from resumecraft.db.models import Job, Resume
 from resumecraft.db.repositories import resume as resume_repo
-from resumecraft.prompts.resume import GENERATE_RESUME_PROMPT, PARSE_RESUME_PROMPT
+from resumecraft.prompts.resume import GENERATE_RESUME_PROMPT
 from resumecraft.schemas.parsed_resume import ParsedResume
-from resumecraft.schemas.resume import GenerateResumeRequest, ParseResumeRequest
+from resumecraft.schemas.resume import GenerateResumeRequest
 
 ProgressFn = Callable[[float], Awaitable[None]]
 
@@ -42,27 +42,6 @@ async def generate(
         (0.2, 0.7),
     )
     title = _title_for(parsed, f"Resume for {request.target_role}")
-    await resume_repo.create(
-        session,
-        Resume(user_id=job.user_id, title=title, content=parsed.model_dump()),
-    )
-    await session.commit()
-    await update_progress(1.0)
-    return parsed
-
-
-async def parse(
-    session: AsyncSession,
-    job: Job,
-    update_progress: ProgressFn,
-    request: ParseResumeRequest,
-) -> ParsedResume:
-    parsed = await _run_structured(
-        PARSE_RESUME_PROMPT.format(resume_text=request.resume_text),
-        update_progress,
-        (0.2, 0.7),
-    )
-    title = _title_for(parsed, "Imported resume")
     await resume_repo.create(
         session,
         Resume(user_id=job.user_id, title=title, content=parsed.model_dump()),

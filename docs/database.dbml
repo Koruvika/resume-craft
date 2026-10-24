@@ -16,9 +16,12 @@ Project resumecraft {
 // ---------------------------------------------------------------------------- enums
 
 // Which background job to run. Values are frozen strings shared with the Celery task
-// names — see worker/tasks/ for the mapping.
+// names — see worker/tasks/ for the mapping. parse_resume is reserved (kept in the DB
+// enum by migration 0004; Postgres cannot drop enum values) for a future raw-text/PDF
+// parse flow; no task uses it yet.
 enum job_type {
   generate_resume
+  parse_resume
 }
 
 // Job lifecycle, owned by worker/tasks/_runner.py: PENDING -> RUNNING ->

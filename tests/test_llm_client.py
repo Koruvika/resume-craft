@@ -2,7 +2,7 @@ import pytest
 
 from resumecraft.ai.llm.client import get_chat_model
 from resumecraft.core.config import Settings
-from resumecraft.prompts.resume import GENERATE_RESUME_PROMPT, PARSE_RESUME_PROMPT
+from resumecraft.prompts.resume import GENERATE_RESUME_PROMPT
 from resumecraft.schemas.parsed_resume import ParsedResume
 from resumecraft.schemas.resume import GenerateResumeRequest
 
@@ -51,12 +51,6 @@ def test_prompt_formats_without_leftover_placeholders() -> None:
     formatted = GENERATE_RESUME_PROMPT.format(resume_text="my resume", target_role="SWE")
     assert "{resume_text}" not in formatted
     assert "{target_role}" not in formatted
-    assert "my resume" in formatted
-
-
-def test_parse_prompt_formats_without_leftover_placeholders() -> None:
-    formatted = PARSE_RESUME_PROMPT.format(resume_text="my resume")
-    assert "{resume_text}" not in formatted
     assert "my resume" in formatted
 
 

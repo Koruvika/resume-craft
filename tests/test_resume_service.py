@@ -5,11 +5,10 @@ from sqlalchemy import select
 from resumecraft.core.enums import JobType
 from resumecraft.db.models import Job, Resume
 from resumecraft.schemas.parsed_resume import ContactInfo, ParsedResume
-from resumecraft.schemas.resume import GenerateResumeRequest, ParseResumeRequest
+from resumecraft.schemas.resume import GenerateResumeRequest
 from resumecraft.services import resume_service
 
 REQUEST = GenerateResumeRequest(resume_text="x" * 60, target_role="Backend Engineer")
-PARSE_REQUEST = ParseResumeRequest(resume_text="x" * 60)
 
 
 class FakeStructured:
@@ -25,8 +24,8 @@ class FakeStructured:
         )
 
 
-async def _make_job(session, job_type: JobType, input_data: dict) -> Job:
-    job = Job(user_id=uuid.uuid4(), type=job_type, input=input_data)
+async def _make_job(session, input_data: dict) -> Job:
+    job = Job(user_id=uuid.uuid4(), type=JobType.GENERATE_RESUME, input=input_data)
     session.add(job)
     await session.flush()
     return job
@@ -43,7 +42,7 @@ async def _progress_spy() -> tuple[list[float], object]:
 
 async def test_generate_persists_parsed_resume(db_session, monkeypatch) -> None:
     monkeypatch.setattr(resume_service, "get_chat_model", lambda: FakeStructured())
-    job = await _make_job(db_session, JobType.GENERATE_RESUME, REQUEST.model_dump())
+    job = await _make_job(db_session, REQUEST.model_dump())
     calls, update_progress = await _progress_spy()
 
     parsed = await resume_service.generate(db_session, job, update_progress, REQUEST)
@@ -59,19 +58,6 @@ async def test_generate_persists_parsed_resume(db_session, monkeypatch) -> None:
     assert resumes[0].content["contact_info"]["full_name"] == "Jane Doe"
 
 
-async def test_parse_persists_parsed_resume(db_session, monkeypatch) -> None:
-    monkeypatch.setattr(resume_service, "get_chat_model", lambda: FakeStructured())
-    job = await _make_job(db_session, JobType.PARSE_RESUME, PARSE_REQUEST.model_dump())
-    calls, update_progress = await _progress_spy()
-
-    parsed = await resume_service.parse(db_session, job, update_progress, PARSE_REQUEST)
-
-    assert parsed.contact_info.full_name == "Jane Doe"
-    assert calls == [0.2, 0.7, 1.0]
-    result = await db_session.execute(select(Resume))
-    assert len(result.scalars().all()) == 1
-
-
 async def test_generate_title_falls_back_to_target_role(db_session, monkeypatch) -> None:
     class EmptyModel:
         def with_structured_output(self, schema: type) -> "EmptyModel":
@@ -81,7 +67,7 @@ async def test_generate_title_falls_back_to_target_role(db_session, monkeypatch)
             return ParsedResume(summary="s")
 
     monkeypatch.setattr(resume_service, "get_chat_model", lambda: EmptyModel())
-    job = await _make_job(db_session, JobType.GENERATE_RESUME, REQUEST.model_dump())
+    job = await _make_job(db_session, REQUEST.model_dump())
     _, update_progress = await _progress_spy()
 
     await resume_service.generate(db_session, job, update_progress, REQUEST)
