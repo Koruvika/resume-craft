@@ -9,6 +9,7 @@ from resumecraft.db.models import Resume
 from resumecraft.db.repositories import job as job_repo
 from resumecraft.db.session import get_session
 from resumecraft.main import create_app
+from resumecraft.services import resume_service
 
 VALID_PAYLOAD = {"resume_text": "x" * 60, "target_role": "Backend Engineer"}
 
@@ -161,8 +162,6 @@ async def test_upload_file_rejects_missing_file(client) -> None:
 
 
 async def test_upload_file_rejects_oversize(client, monkeypatch) -> None:
-    import resumecraft.api.v1.resumes as resumes_module
-
-    monkeypatch.setattr(resumes_module, "MAX_UPLOAD_BYTES", 10)
+    monkeypatch.setattr(resume_service, "MAX_UPLOAD_BYTES", 10)
     response = await _upload_file(client, content=b"x" * 11)
     assert response.status_code == 413

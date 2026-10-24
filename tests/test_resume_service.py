@@ -1,5 +1,7 @@
+import json
 import uuid
 
+import pytest
 from sqlalchemy import select
 
 from resumecraft.core.enums import JobType
@@ -105,3 +107,50 @@ async def test_import_parsed_custom_title_wins(db_session) -> None:
         db_session, uuid.uuid4(), parsed, title="Custom title"
     )
     assert resume.title == "Custom title"
+
+
+FILE_BYTES = json.dumps(
+    {"contact_info": {"full_name": "Jane Doe", "headline": "Staff Engineer"}}
+).encode()
+
+
+async def test_import_file_stores_resume(db_session) -> None:
+    resume = await resume_service.import_file(
+        db_session,
+        uuid.uuid4(),
+        raw=FILE_BYTES,
+        content_type="application/json; charset=utf-8",
+    )
+    assert resume.title == "Staff Engineer"
+    assert resume.content["contact_info"]["full_name"] == "Jane Doe"
+
+
+async def test_import_file_rejects_content_type(db_session) -> None:
+    with pytest.raises(resume_service.UnsupportedUploadContentType):
+        await resume_service.import_file(
+            db_session, uuid.uuid4(), raw=FILE_BYTES, content_type="text/plain"
+        )
+
+
+async def test_import_file_rejects_oversize(db_session, monkeypatch) -> None:
+    monkeypatch.setattr(resume_service, "MAX_UPLOAD_BYTES", 10)
+    with pytest.raises(resume_service.UploadTooLarge):
+        await resume_service.import_file(
+            db_session, uuid.uuid4(), raw=b"x" * 11, content_type="application/json"
+        )
+
+
+async def test_import_file_rejects_bad_json(db_session) -> None:
+    with pytest.raises(resume_service.InvalidUploadJSON, match="valid JSON"):
+        await resume_service.import_file(
+            db_session, uuid.uuid4(), raw=b"{oops", content_type="application/json"
+        )
+
+
+async def test_import_file_rejects_schema_violation(db_session) -> None:
+    bad = json.dumps({"languages": [{"level": "nine"}]}).encode()
+    with pytest.raises(resume_service.InvalidUploadJSON) as exc_info:
+        await resume_service.import_file(
+            db_session, uuid.uuid4(), raw=bad, content_type="application/json"
+        )
+    assert exc_info.value.detail
