@@ -78,6 +78,8 @@ email costs a decoy bcrypt verify so response time is not an oracle.
 2. `make revision m="describe change"` (requires `make up` — autogenerate
    against dev postgres).
 3. `make migrate`, verify.
+4. Update `docs/database.dbml` to match — models and migrations are the source
+   of truth; the dbml is only the diagram, but it must never drift from them.
 
 Migrations are async (`alembic/env.py`); DSN comes from settings, never
 hardcoded. JSON columns use `JSONVariant` (JSONB on Postgres, JSON on sqlite so
