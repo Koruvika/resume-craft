@@ -7,6 +7,11 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resumecraft.ai.llm.client import get_chat_model
+from resumecraft.core.exceptions import (
+    FileTooLargeError,
+    InvalidResumeFileError,
+    UnsupportedFileTypeError,
+)
 from resumecraft.db.models import Job, Resume
 from resumecraft.db.repositories import resume as resume_repo
 from resumecraft.prompts.resume import GENERATE_RESUME_PROMPT
@@ -18,24 +23,7 @@ ProgressFn = Callable[[float], Awaitable[None]]
 # Defensive cap: a ParsedResume is a few KB of text, so 1 MiB is already generous.
 MAX_UPLOAD_BYTES = 1024 * 1024
 
-
-class UnsupportedUploadContentType(ValueError):
-    """Upload's declared content type is not application/json."""
-
-
-class UploadTooLarge(ValueError):
-    """Upload exceeds MAX_UPLOAD_BYTES."""
-
-
-class InvalidUploadJSON(ValueError):
-    """Bytes are not valid JSON or do not validate as a ParsedResume.
-
-    `detail` carries the pydantic error list for schema violations.
-    """
-
-    def __init__(self, message: str, detail: object | None = None) -> None:
-        super().__init__(message)
-        self.detail = detail
+SUPPORTED_UPLOAD_TYPES = ["application/json"]
 
 
 def _title_for(parsed: ParsedResume, fallback: str) -> str:
@@ -99,17 +87,26 @@ async def import_file(
     """Validate uploaded resume bytes and store them, same as import_parsed."""
     declared = (content_type or "").split(";")[0].strip().lower()
     if declared != "application/json":
-        raise UnsupportedUploadContentType("File must be application/json")
+        raise UnsupportedFileTypeError(
+            declared or "unknown",
+            SUPPORTED_UPLOAD_TYPES,
+            message="File must be application/json",
+        )
     if len(raw) > MAX_UPLOAD_BYTES:
-        raise UploadTooLarge(f"File exceeds {MAX_UPLOAD_BYTES} bytes limit")
+        raise FileTooLargeError(
+            size_bytes=len(raw),
+            max_bytes=MAX_UPLOAD_BYTES,
+            message=f"File exceeds {MAX_UPLOAD_BYTES} bytes limit",
+        )
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError):
-        raise InvalidUploadJSON("File is not valid JSON") from None
+        raise InvalidResumeFileError("File is not valid JSON") from None
     try:
         parsed = ParsedResume.model_validate(data)
     except ValidationError as exc:
-        raise InvalidUploadJSON(
-            "File is not a valid ParsedResume", detail=json.loads(exc.json())
+        raise InvalidResumeFileError(
+            "File is not a valid ParsedResume",
+            details={"fields": json.loads(exc.json())},
         ) from None
     return await import_parsed(session, user_id, parsed, title=title)

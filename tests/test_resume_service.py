@@ -5,6 +5,11 @@ import pytest
 from sqlalchemy import select
 
 from resumecraft.core.enums import JobType
+from resumecraft.core.exceptions import (
+    FileTooLargeError,
+    InvalidResumeFileError,
+    UnsupportedFileTypeError,
+)
 from resumecraft.db.models import Job, Resume
 from resumecraft.schemas.parsed_resume import ContactInfo, ParsedResume
 from resumecraft.schemas.resume import GenerateResumeRequest
@@ -126,7 +131,7 @@ async def test_import_file_stores_resume(db_session) -> None:
 
 
 async def test_import_file_rejects_content_type(db_session) -> None:
-    with pytest.raises(resume_service.UnsupportedUploadContentType):
+    with pytest.raises(UnsupportedFileTypeError):
         await resume_service.import_file(
             db_session, uuid.uuid4(), raw=FILE_BYTES, content_type="text/plain"
         )
@@ -134,14 +139,14 @@ async def test_import_file_rejects_content_type(db_session) -> None:
 
 async def test_import_file_rejects_oversize(db_session, monkeypatch) -> None:
     monkeypatch.setattr(resume_service, "MAX_UPLOAD_BYTES", 10)
-    with pytest.raises(resume_service.UploadTooLarge):
+    with pytest.raises(FileTooLargeError):
         await resume_service.import_file(
             db_session, uuid.uuid4(), raw=b"x" * 11, content_type="application/json"
         )
 
 
 async def test_import_file_rejects_bad_json(db_session) -> None:
-    with pytest.raises(resume_service.InvalidUploadJSON, match="valid JSON"):
+    with pytest.raises(InvalidResumeFileError, match="valid JSON"):
         await resume_service.import_file(
             db_session, uuid.uuid4(), raw=b"{oops", content_type="application/json"
         )
@@ -149,8 +154,8 @@ async def test_import_file_rejects_bad_json(db_session) -> None:
 
 async def test_import_file_rejects_schema_violation(db_session) -> None:
     bad = json.dumps({"languages": [{"level": "nine"}]}).encode()
-    with pytest.raises(resume_service.InvalidUploadJSON) as exc_info:
+    with pytest.raises(InvalidResumeFileError) as exc_info:
         await resume_service.import_file(
             db_session, uuid.uuid4(), raw=bad, content_type="application/json"
         )
-    assert exc_info.value.detail
+    assert exc_info.value.details["fields"]

@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resumecraft.core.enums import JobType
+from resumecraft.core.exceptions import NotFoundError
 from resumecraft.db.models import Job
 from resumecraft.db.repositories import job as job_repo
 
@@ -22,5 +23,5 @@ async def attach_task_id(session: AsyncSession, job_id: uuid.UUID, celery_task_i
 async def get_job_for_user(session: AsyncSession, job_id: uuid.UUID, user_id: uuid.UUID) -> Job:
     job = await job_repo.get_by_id_for_user(session, job_id, user_id)
     if job is None:
-        raise LookupError(f"Job {job_id} not found for user {user_id}")
+        raise NotFoundError("job", job_id)
     return job

@@ -12,19 +12,11 @@ from functools import lru_cache
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from resumecraft.core.exceptions import AuthenticationError, EmailAlreadyRegisteredError
 from resumecraft.core.security import hash_password, needs_rehash, verify_password
 from resumecraft.db.models import User
 from resumecraft.db.repositories import user as user_repo
 from resumecraft.schemas.auth import RegisterRequest
-
-
-class EmailAlreadyRegisteredError(Exception):
-    """Raised when a registration clashes with an existing email."""
-
-
-class AuthenticationError(Exception):
-    """Raised on any failed login — always with the same message."""
-
 
 #: One message for every way authentication can fail — wrong password, unknown
 #: email, deactivated account. Telling them apart tells an attacker which emails

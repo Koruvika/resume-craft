@@ -5,6 +5,7 @@ import structlog
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from resumecraft.api.errors import register_exception_handlers
 from resumecraft.api.v1.router import router as v1_router
 from resumecraft.core.config import Settings, get_settings
 from resumecraft.core.logging import configure_logging
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/api/v1/docs" if settings.app_env != "prod" else None,
         lifespan=lifespan,
     )
+    register_exception_handlers(app)
     app.include_router(v1_router, prefix="/api/v1")
     return app
 

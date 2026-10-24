@@ -1,11 +1,12 @@
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resumecraft.core.config import Settings, get_settings
+from resumecraft.core.exceptions import AuthenticationError
 from resumecraft.core.security import decode_access_token
 from resumecraft.db.session import get_session
 from resumecraft.schemas.auth import CurrentUser
@@ -21,13 +22,11 @@ async def get_current_user(
     settings: SettingsDep,
 ) -> CurrentUser:
     if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise AuthenticationError("Not authenticated")
     try:
         user_id = decode_access_token(credentials.credentials, settings)
     except (jwt.InvalidTokenError, KeyError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        ) from None
+        raise AuthenticationError("Invalid token") from None
     return CurrentUser(user_id=user_id)
 
 

@@ -140,20 +140,20 @@ async def test_upload_file_accepts_custom_title(client) -> None:
 async def test_upload_file_rejects_wrong_content_type(client) -> None:
     response = await _upload_file(client, content=FILE_PAYLOAD, content_type="text/plain")
     assert response.status_code == 422
-    assert response.json()["detail"] == "File must be application/json"
+    assert response.json()["error"]["message"] == "File must be application/json"
 
 
 async def test_upload_file_rejects_invalid_json(client) -> None:
     response = await _upload_file(client, content=b"{not json")
     assert response.status_code == 422
-    assert response.json()["detail"] == "File is not valid JSON"
+    assert response.json()["error"]["message"] == "File is not valid JSON"
 
 
 async def test_upload_file_rejects_schema_violation(client) -> None:
     bad = json.dumps({"languages": [{"language": "English", "level": "nine"}]}).encode()
     response = await _upload_file(client, content=bad)
     assert response.status_code == 422
-    assert response.json()["detail"]
+    assert response.json()["error"]["message"]
 
 
 async def test_upload_file_rejects_missing_file(client) -> None:

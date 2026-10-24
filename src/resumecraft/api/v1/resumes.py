@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile
 
 from resumecraft.api.deps import CurrentUserDep, DbSession
 from resumecraft.core.celery_app import celery_app
@@ -45,14 +45,7 @@ async def upload_resume_file(
     """Import a resume by uploading a ParsedResume JSON file — same validation
     and storage as POST /resumes/upload."""
     raw = await file.read(resume_service.MAX_UPLOAD_BYTES + 1)
-    try:
-        resume = await resume_service.import_file(
-            db, user.user_id, raw=raw, content_type=file.content_type, title=title
-        )
-    except resume_service.UnsupportedUploadContentType as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
-    except resume_service.UploadTooLarge as exc:
-        raise HTTPException(status_code=413, detail=str(exc)) from None
-    except resume_service.InvalidUploadJSON as exc:
-        raise HTTPException(status_code=422, detail=exc.detail or str(exc)) from None
+    resume = await resume_service.import_file(
+        db, user.user_id, raw=raw, content_type=file.content_type, title=title
+    )
     return ResumeOut.model_validate(resume)
