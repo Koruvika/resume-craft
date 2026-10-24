@@ -1,3 +1,4 @@
+import json
 import uuid
 
 import httpx
@@ -102,3 +103,66 @@ async def test_upload_requires_auth(db_session, monkeypatch) -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         response = await c.post("/api/v1/resumes/upload", json=UPLOAD_JSON)
     assert response.status_code == 401
+
+
+FILE_PAYLOAD = json.dumps(UPLOAD_JSON["resume_json"]).encode()
+
+
+async def _upload_file(
+    client, *, content: bytes, filename="resume.json", content_type="application/json", title=None
+):
+    data = {} if title is None else {"title": title}
+    return await client.post(
+        "/api/v1/resumes/upload-file",
+        files={"file": (filename, content, content_type)},
+        data=data,
+    )
+
+
+async def test_upload_file_creates_resume(client, db_session) -> None:
+    response = await _upload_file(client, content=FILE_PAYLOAD)
+    assert response.status_code == 201
+    body = response.json()
+    assert body["title"] == "Staff Engineer"
+    assert body["content"]["contact_info"]["full_name"] == "Jane Doe"
+
+    result = await db_session.execute(select(Resume))
+    assert len(result.scalars().all()) == 1
+
+
+async def test_upload_file_accepts_custom_title(client) -> None:
+    response = await _upload_file(client, content=FILE_PAYLOAD, title="Custom title")
+    assert response.status_code == 201
+    assert response.json()["title"] == "Custom title"
+
+
+async def test_upload_file_rejects_wrong_content_type(client) -> None:
+    response = await _upload_file(client, content=FILE_PAYLOAD, content_type="text/plain")
+    assert response.status_code == 422
+    assert response.json()["detail"] == "File must be application/json"
+
+
+async def test_upload_file_rejects_invalid_json(client) -> None:
+    response = await _upload_file(client, content=b"{not json")
+    assert response.status_code == 422
+    assert response.json()["detail"] == "File is not valid JSON"
+
+
+async def test_upload_file_rejects_schema_violation(client) -> None:
+    bad = json.dumps({"languages": [{"language": "English", "level": "nine"}]}).encode()
+    response = await _upload_file(client, content=bad)
+    assert response.status_code == 422
+    assert response.json()["detail"]
+
+
+async def test_upload_file_rejects_missing_file(client) -> None:
+    response = await client.post("/api/v1/resumes/upload-file")
+    assert response.status_code == 422
+
+
+async def test_upload_file_rejects_oversize(client, monkeypatch) -> None:
+    import resumecraft.api.v1.resumes as resumes_module
+
+    monkeypatch.setattr(resumes_module, "MAX_UPLOAD_BYTES", 10)
+    response = await _upload_file(client, content=b"x" * 11)
+    assert response.status_code == 413

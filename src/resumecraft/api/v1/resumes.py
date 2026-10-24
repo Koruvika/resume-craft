@@ -1,14 +1,22 @@
-from fastapi import APIRouter
+import json
+from typing import Annotated
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from pydantic import ValidationError
 
 from resumecraft.api.deps import CurrentUserDep, DbSession
 from resumecraft.core.celery_app import celery_app
 from resumecraft.schemas.job import JobAcceptedResponse
+from resumecraft.schemas.parsed_resume import ParsedResume
 from resumecraft.schemas.resume import GenerateResumeRequest, ResumeOut, UploadResumeRequest
 from resumecraft.services import job_service, resume_service
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
 GENERATE_RESUME_TASK = "resumecraft.worker.tasks.generate_resume"
+
+# Defensive cap: a ParsedResume is a few KB of text, so 1 MiB is already generous.
+MAX_UPLOAD_BYTES = 1024 * 1024
 
 
 @router.post("/generate", response_model=JobAcceptedResponse, status_code=202)
@@ -30,4 +38,35 @@ async def upload_resume(
     resume = await resume_service.import_parsed(
         db, user.user_id, request.resume_json, title=request.title
     )
+    return ResumeOut.model_validate(resume)
+
+
+@router.post("/upload-file", response_model=ResumeOut, status_code=201)
+async def upload_resume_file(
+    file: Annotated[UploadFile, File(description="A resume as a ParsedResume JSON file")],
+    db: DbSession,
+    user: CurrentUserDep,
+    title: Annotated[str | None, Form(min_length=1, max_length=255)] = None,
+) -> ResumeOut:
+    """Import a resume by uploading a ParsedResume JSON file — same validation
+    and storage as POST /resumes/upload."""
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(status_code=422, detail="File must be application/json")
+
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 1 MiB limit")
+
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=422, detail="File is not valid JSON") from None
+
+    try:
+        parsed = ParsedResume.model_validate(data)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=json.loads(exc.json())) from None
+
+    resume = await resume_service.import_parsed(db, user.user_id, parsed, title=title)
     return ResumeOut.model_validate(resume)
