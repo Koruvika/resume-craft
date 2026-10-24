@@ -44,6 +44,7 @@ Table users {
   is_active bool [not null, default: true, note: 'Deactivation, not deletion — users own rows elsewhere']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz [note: 'Soft-delete marker; NULL means live. No trigger scoping — reads filter explicitly']
 
   indexes {
     email [unique]
@@ -65,6 +66,7 @@ Table jobs {
   celery_task_id text
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz [note: 'Soft-delete marker; NULL means live. No trigger scoping — reads filter explicitly']
 
   indexes {
     user_id
@@ -78,6 +80,7 @@ Table resumes {
   content jsonb [not null, note: 'GeneratedResume payload (title, summary, highlights, skills)']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz [note: 'Soft-delete marker; NULL means live. No trigger scoping — reads filter explicitly']
 
   indexes {
     user_id

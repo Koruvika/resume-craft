@@ -25,3 +25,6 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Soft-delete marker: NULL means live. Reads that care must filter on this
+    # explicitly — no trigger or default query scoping does it for you.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
