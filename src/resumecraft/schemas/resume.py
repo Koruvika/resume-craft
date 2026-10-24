@@ -18,6 +18,8 @@ class UploadResumeRequest(BaseModel):
     """
 
     resume_json: ParsedResume
+    # Falls back to the resume's headline / full name when omitted.
+    title: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class ResumeOut(BaseModel):

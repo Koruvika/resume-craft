@@ -95,3 +95,13 @@ async def test_import_parsed_stores_resume(db_session) -> None:
 async def test_import_parsed_title_falls_back(db_session) -> None:
     resume = await resume_service.import_parsed(db_session, uuid.uuid4(), ParsedResume(summary="s"))
     assert resume.title == "Imported resume"
+
+
+async def test_import_parsed_custom_title_wins(db_session) -> None:
+    parsed = ParsedResume(
+        contact_info=ContactInfo(full_name="John Doe", headline="Platform Engineer")
+    )
+    resume = await resume_service.import_parsed(
+        db_session, uuid.uuid4(), parsed, title="Custom title"
+    )
+    assert resume.title == "Custom title"

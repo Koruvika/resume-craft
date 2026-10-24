@@ -51,10 +51,12 @@ async def generate(
     return parsed
 
 
-async def import_parsed(session: AsyncSession, user_id: UUID, parsed: ParsedResume) -> Resume:
+async def import_parsed(
+    session: AsyncSession, user_id: UUID, parsed: ParsedResume, title: str | None = None
+) -> Resume:
     resume = Resume(
         user_id=user_id,
-        title=_title_for(parsed, "Imported resume"),
+        title=title or _title_for(parsed, "Imported resume"),
         content=parsed.model_dump(),
     )
     await resume_repo.create(session, resume)

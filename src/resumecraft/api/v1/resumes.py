@@ -27,5 +27,7 @@ async def upload_resume(
 ) -> ResumeOut:
     """Import an already-structured resume (ParsedResume JSON): validated and
     stored synchronously — no LLM, no background job."""
-    resume = await resume_service.import_parsed(db, user.user_id, request.resume_json)
+    resume = await resume_service.import_parsed(
+        db, user.user_id, request.resume_json, title=request.title
+    )
     return ResumeOut.model_validate(resume)

@@ -73,6 +73,19 @@ async def test_upload_rejects_invalid_resume_json(client) -> None:
     assert response.status_code == 422
 
 
+async def test_upload_accepts_custom_title(client, db_session) -> None:
+    payload = {**UPLOAD_JSON, "title": "My custom title"}
+    response = await client.post("/api/v1/resumes/upload", json=payload)
+    assert response.status_code == 201
+    assert response.json()["title"] == "My custom title"
+
+
+async def test_upload_rejects_blank_title(client) -> None:
+    payload = {**UPLOAD_JSON, "title": ""}
+    response = await client.post("/api/v1/resumes/upload", json=payload)
+    assert response.status_code == 422
+
+
 async def test_upload_requires_resume_json(client) -> None:
     response = await client.post("/api/v1/resumes/upload", json={})
     assert response.status_code == 422
