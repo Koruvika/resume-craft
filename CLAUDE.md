@@ -51,10 +51,30 @@ Rules:
 Local JWT auth (SSKF-AI pattern, simplified): `POST /auth/register` (bcrypt
 password, 201 UserOut), `POST /auth/login` (HS256 TokenOut signed with
 `RC_JWT_SECRET_KEY`), `GET /auth/me`. `core/security.py` owns hashing and token
-create/decode; `api/deps.py::get_current_user` maps failures to 401. Passwords:
+create/decode; `api/deps.py::get_current_user` raises `AuthenticationError`
+(401 via the central handler). Passwords:
 bcrypt cost 12, 72-byte input limit enforced in the schema (422 over a 500).
 Login failures share one message ("Incorrect email or password") and an unknown
 email costs a decoy bcrypt verify so response time is not an oracle.
+
+## Errors
+
+Centralized: domain errors are raised anywhere, translated to
+HTTP in exactly one place. Every error response has one shape:
+`{"error": {"code": ..., "message": ..., "details": {...}}}`.
+
+- `core/exceptions.py` — framework-free hierarchy (`ResumeCraftError` base with
+  `code`/`status_code`/`message`/`details`, subclasses per condition, e.g.
+  `NotFoundError("job", id)` → 404 `job_not_found`). Services and the worker
+  raise these; they must not import FastAPI. `code` is a frozen client-facing
+  contract — never rename one.
+- `api/errors.py` — `register_exception_handlers` maps the hierarchy, FastAPI's
+  `RequestValidationError`, Starlette `HTTPException` (routing 404/405), and
+  unhandled crashes (generic 500, no internals leaked) onto the envelope.
+  4xx logs a warning, 5xx logs a traceback; 401 always carries
+  `WWW-Authenticate: Bearer`.
+- Routers/deps raise domain errors only — no try/except-to-HTTPException
+  mapping in endpoint code.
 
 ## Celery conventions
 
