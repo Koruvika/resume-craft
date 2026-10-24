@@ -11,6 +11,9 @@ REQUEST = GenerateResumeRequest(resume_text="x" * 60, target_role="Backend Engin
 
 
 class FakeStructured:
+    def with_structured_output(self, schema: type) -> "FakeStructured":
+        return self
+
     async def ainvoke(self, prompt: str) -> GeneratedResume:
         assert "{resume_text}" not in prompt
         return GeneratedResume(
