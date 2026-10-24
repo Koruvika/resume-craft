@@ -58,10 +58,14 @@ async def run_job_flow(
 
 def run_job_task(job_id: str, work: WorkFn) -> None:
     """Celery task entry: fresh engine per invocation (Hodai pattern), disposed after."""
+    asyncio.run(_run_job_task(uuid.UUID(job_id), work))
+
+
+async def _run_job_task(job_id: uuid.UUID, work: WorkFn) -> None:
     settings = get_settings()
     engine = create_async_engine(settings.database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
-        asyncio.run(run_job_flow(session_factory, uuid.UUID(job_id), work))
+        await run_job_flow(session_factory, job_id, work)
     finally:
-        asyncio.run(engine.dispose())
+        await engine.dispose()

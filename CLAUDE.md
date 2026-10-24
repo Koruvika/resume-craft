@@ -1,0 +1,95 @@
+# CLAUDE.md
+
+Backend for resumecraft: FastAPI API + Celery worker + LangChain LLM services,
+backed by Supabase Postgres (SQLAlchemy async). Design spec and plans live in
+`docs/plans/`.
+
+## Commands
+
+```bash
+uv sync                       # install deps (Python 3.13, uv)
+make up                       # start dev postgres (localhost:5434) + redis (6379)
+make migrate                  # alembic upgrade head
+make dev                      # run API:  uvicorn resumecraft.main:app --reload
+make worker                  # run Celery worker
+make test                     # pytest (llm/network/db markers excluded)
+make lint                     # ruff format --check + ruff check
+make format                   # ruff format + autofix
+make typecheck                # mypy
+make imports                  # import-linter (layering contracts)
+make revision m="msg"         # alembic autogenerate revision
+```
+
+Quality gate before every commit: `make format lint typecheck imports test`.
+
+## Architecture
+
+Single shared package `src/resumecraft/` with two process entrypoints:
+
+- **API**: `resumecraft.main:app` (uvicorn). Routes under `/api/v1`, app factory
+  + lifespan (engine init/pre-ping, disposal).
+- **Worker**: `resumecraft.core.celery_app:celery_app` (celery -A). Redis
+  broker, single `default` queue.
+
+Layering (enforced by import-linter in `pyproject.toml`):
+
+```
+api/v1  →  services  →  repositories  →  models
+              ↓                        ai/llm, prompts  (isolated)
+worker/tasks → services (thin shells, never import api)
+```
+
+Rules:
+- `api` is the outermost layer — nothing imports it except `main.py`.
+- `services/` own DB commits; repositories only flush.
+- Only `services/` call the LLM (`ai/llm/client.py`, LangChain ChatOpenAI
+  against any OpenAI-compatible endpoint).
+- `worker` never imports `api`.
+
+## Celery conventions
+
+- Tasks are thin shells over services, wrapped in
+  `worker/tasks/_runner.py::run_job_task` (fresh engine per task, Job status
+  lifecycle PENDING → RUNNING → COMPLETED/FAILED, progress callbacks,
+  SoftTimeLimitExceeded recorded as timeout).
+- Task names are a **frozen contract**: `resumecraft.worker.tasks.<x>`. Never
+  rename existing tasks (in-flight messages + `send_task` calls reference them
+  by string).
+- Every task must be re-exported from `worker/tasks/__init__.py` or Celery
+  won't register it.
+- The API enqueues via `celery_app.send_task(<name>)` and stores the returned
+  id on `Job.celery_task_id`.
+- New job type: add `JobType` member → schema → service → task (via
+  `run_job_task`) → endpoint.
+
+## Schema changes
+
+1. Edit models in `src/resumecraft/db/models/`.
+2. `make revision m="describe change"` (requires `make up` — autogenerate
+   against dev postgres).
+3. `make migrate`, verify.
+
+Migrations are async (`alembic/env.py`); DSN comes from settings, never
+hardcoded. JSON columns use `JSONVariant` (JSONB on Postgres, JSON on sqlite so
+tests run on aiosqlite).
+
+## Configuration
+
+`core/config.py`, pydantic-settings, env prefix `RC_`, `.env` backed. See
+`.env.example`. All fields have defaults — the package imports with no env.
+
+- **Local dev**: docker compose postgres (host port 5434 — 5432/5433 are taken
+  by system postgres) + redis.
+- **Supabase prod**: point `RC_DATABASE_*` at the supavisor pooler
+  (port 6543) with `RC_DATABASE_USE_SSL=true`. Auth: `RC_SUPABASE_JWT_SECRET`
+  (HS256, dev) or `RC_SUPABASE_JWKS_URL` (RS256, prod).
+
+## Testing
+
+- pytest, `asyncio_mode=auto`. Default suite runs fully offline on in-memory
+  sqlite (`db_session` fixture in `tests/conftest.py`).
+- Markers: `db` (needs compose postgres + migrations), `llm` (real LLM call),
+  `network`. Excluded by default; run with `uv run pytest -m db`.
+- LLM is always mocked in unit tests via `get_chat_model` monkeypatching;
+  API tests override `get_session`/`get_current_user` dependencies and stub
+  `send_task`.
