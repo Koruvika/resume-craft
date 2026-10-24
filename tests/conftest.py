@@ -60,3 +60,17 @@ async def client(db_session, monkeypatch) -> httpx.AsyncClient:
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture
+async def plain_client(db_session) -> httpx.AsyncClient:
+    """API client with DB overridden but real auth — endpoints enforce tokens."""
+    app = create_app()
+
+    async def _session_override() -> AsyncSession:
+        yield db_session
+
+    app.dependency_overrides[get_session] = _session_override
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c

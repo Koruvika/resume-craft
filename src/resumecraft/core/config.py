@@ -39,10 +39,9 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     llm_model: str = "gpt-4o-mini"
 
-    # Supabase — HS256 JWT secret for dev; JWKS URL for prod (RS256).
-    supabase_url: str | None = None
-    supabase_jwt_secret: SecretStr | None = None
-    supabase_jwks_url: str | None = None
+    # Auth — local JWT issuer: /auth/login signs tokens with this key.
+    jwt_secret_key: SecretStr = SecretStr("dev-only-jwt-secret-key-change-me")
+    access_token_expire_minutes: int = 60
 
     @property
     def database_url(self) -> str:

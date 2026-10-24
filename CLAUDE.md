@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 Backend for resumecraft: FastAPI API + Celery worker + LangChain LLM services,
-backed by Supabase Postgres (SQLAlchemy async). Design spec and plans live in
-`docs/plans/`.
+backed by Postgres (SQLAlchemy async), with local JWT auth. Design spec and
+plans live in `docs/plans/`.
 
 ## Commands
 
@@ -46,6 +46,16 @@ Rules:
   against any OpenAI-compatible endpoint).
 - `worker` never imports `api`.
 
+## Auth
+
+Local JWT auth (SSKF-AI pattern, simplified): `POST /auth/register` (bcrypt
+password, 201 UserOut), `POST /auth/login` (HS256 TokenOut signed with
+`RC_JWT_SECRET_KEY`), `GET /auth/me`. `core/security.py` owns hashing and token
+create/decode; `api/deps.py::get_current_user` maps failures to 401. Passwords:
+bcrypt cost 12, 72-byte input limit enforced in the schema (422 over a 500).
+Login failures share one message ("Incorrect email or password") and an unknown
+email costs a decoy bcrypt verify so response time is not an oracle.
+
 ## Celery conventions
 
 - Tasks are thin shells over services, wrapped in
@@ -80,9 +90,6 @@ tests run on aiosqlite).
 
 - **Local dev**: docker compose postgres (host port 5434 — 5432/5433 are taken
   by system postgres) + redis.
-- **Supabase prod**: point `RC_DATABASE_*` at the supavisor pooler
-  (port 6543) with `RC_DATABASE_USE_SSL=true`. Auth: `RC_SUPABASE_JWT_SECRET`
-  (HS256, dev) or `RC_SUPABASE_JWKS_URL` (RS256, prod).
 
 ## Testing
 

@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resumecraft.core.config import Settings, get_settings
-from resumecraft.core.security import AuthConfigError, decode_supabase_token
+from resumecraft.core.security import decode_access_token
 from resumecraft.db.session import get_session
 from resumecraft.schemas.auth import CurrentUser
 
@@ -23,11 +23,12 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     try:
-        return decode_supabase_token(credentials.credentials, settings)
-    except (AuthConfigError, jwt.InvalidTokenError, KeyError, ValueError):
+        user_id = decode_access_token(credentials.credentials, settings)
+    except (jwt.InvalidTokenError, KeyError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
         ) from None
+    return CurrentUser(user_id=user_id)
 
 
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
