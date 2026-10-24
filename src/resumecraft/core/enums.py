@@ -11,3 +11,4 @@ class JobStatus(StrEnum):
 
 class JobType(StrEnum):
     GENERATE_RESUME = "generate_resume"
+    PARSE_RESUME = "parse_resume"

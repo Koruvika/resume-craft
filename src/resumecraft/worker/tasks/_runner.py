@@ -3,6 +3,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import structlog
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -10,6 +11,8 @@ from resumecraft.core.config import get_settings
 from resumecraft.core.enums import JobStatus
 from resumecraft.db.models import Job
 from resumecraft.db.repositories import job as job_repo
+
+logger = structlog.get_logger(__name__)
 
 ProgressFn = Callable[[float], Awaitable[None]]
 WorkFn = Callable[[AsyncSession, Job, ProgressFn], Awaitable[dict[str, Any]]]
@@ -49,7 +52,9 @@ async def run_job_flow(
             await session.commit()
         except Exception as exc:
             # Swallow after recording: the Job row carries the failure, so a
-            # re-raise would only trigger a costly blind autoretry.
+            # re-raise would only trigger a costly blind autoretry. Log the
+            # full stack — the row keeps only the summary message.
+            logger.exception("job_failed", job_id=job.id, error=str(exc))
             await session.rollback()
             await job_repo.set_error(session, job.id, str(exc))
             await job_repo.set_status(session, job.id, JobStatus.FAILED)
