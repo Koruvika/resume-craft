@@ -20,6 +20,10 @@ dependencies = [
     "structlog>=24.4",
     "pyjwt>=2.10",
     "httpx>=0.28",
+    "anyio>=4.6",
+    "rendercv>=2.8",
+    "rendercv-fonts>=0.5.1",
+    "typst>=0.14.9",
 ]
 
 [dependency-groups]
@@ -55,11 +59,12 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-m 'not llm and not network and not db'"
+addopts = "-m 'not llm and not network and not db and not render'"
 markers = [
     "llm: tests that call a real LLM API",
     "network: tests that require external network access",
     "db: tests that require a real Postgres (docker compose up)",
+    "render: tests that run the real rendercv/typst render pipeline",
 ]
 
 [tool.importlinter]

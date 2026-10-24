@@ -165,3 +165,59 @@ async def test_upload_file_rejects_oversize(client, monkeypatch) -> None:
     monkeypatch.setattr(resume_service, "MAX_UPLOAD_BYTES", 10)
     response = await _upload_file(client, content=b"x" * 11)
     assert response.status_code == 413
+
+
+async def _render_pdf(client, resume_id, *, theme=None, locale=None):
+    params = {}
+    if theme is not None:
+        params["theme"] = theme
+    if locale is not None:
+        params["locale"] = locale
+    return await client.get(f"/api/v1/resumes/{resume_id}/pdf", params=params)
+
+
+async def test_render_resume_pdf_returns_pdf(client, db_session, monkeypatch) -> None:
+    def fake_generate(model, filename):
+        return b"%PDF-1.4 fake", filename
+
+    monkeypatch.setattr("resumecraft.services.render_service.generate_pdf_bytes", fake_generate)
+
+    response = await client.post("/api/v1/resumes/upload", json=UPLOAD_JSON)
+    resume_id = response.json()["id"]
+
+    response = await _render_pdf(client, resume_id)
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == f'inline; filename="resume-{resume_id}.pdf"'
+    assert response.content == b"%PDF-1.4 fake"
+
+
+async def test_render_resume_pdf_requires_auth(db_session, monkeypatch) -> None:
+    app = create_app()
+
+    async def _session_override():
+        yield db_session
+
+    app.dependency_overrides[get_session] = _session_override
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        response = await c.get(f"/api/v1/resumes/{uuid.uuid4()}/pdf")
+    assert response.status_code == 401
+
+
+async def test_render_resume_pdf_unknown_resume(client) -> None:
+    response = await _render_pdf(client, uuid.uuid4())
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "resume_not_found"
+
+
+async def test_render_resume_pdf_rejects_unknown_theme(client) -> None:
+    response = await _render_pdf(client, uuid.uuid4(), theme="nope")
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_render_option"
+
+
+async def test_render_resume_pdf_rejects_unknown_locale(client) -> None:
+    response = await _render_pdf(client, uuid.uuid4(), locale="klingon")
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_render_option"

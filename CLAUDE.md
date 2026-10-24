@@ -44,6 +44,10 @@ Rules:
 - `services/` own DB commits; repositories only flush.
 - Only `services/` call the LLM (`ai/llm/client.py`, LangChain ChatOpenAI
   against any OpenAI-compatible endpoint).
+- `rendering/` renders ParsedResume → PDF (rendercv + typst, in-process).
+  Ported from resumebloom's `app.components.render` — keep conversions in sync.
+  `services/render_service.py` owns the endpoint flow (validate options →
+  load resume → convert → `generate_pdf_bytes` in a worker thread).
 - `worker` never imports `api`.
 
 ## Auth
@@ -118,7 +122,8 @@ tests run on aiosqlite).
 - pytest, `asyncio_mode=auto`. Default suite runs fully offline on in-memory
   sqlite (`db_session` fixture in `tests/conftest.py`).
 - Markers: `db` (needs compose postgres + migrations), `llm` (real LLM call),
-  `network`. Excluded by default; run with `uv run pytest -m db`.
+  `network`, `render` (real rendercv/typst pipeline). Excluded by default;
+  run with `uv run pytest -m db`.
 - LLM is always mocked in unit tests via `get_chat_model` monkeypatching;
   API tests override `get_session`/`get_current_user` dependencies and stub
   `send_task`.

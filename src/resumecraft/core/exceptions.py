@@ -20,8 +20,10 @@ __all__ = [
     "EmailAlreadyRegisteredError",
     "FileTooLargeError",
     "InvalidInputError",
+    "InvalidRenderOptionError",
     "InvalidResumeFileError",
     "NotFoundError",
+    "PdfRenderError",
     "PermissionDeniedError",
     "ResumeCraftError",
     "UnsupportedFileTypeError",
@@ -155,3 +157,22 @@ class InvalidResumeFileError(InvalidInputError):
 
     code = "invalid_resume_file"
     default_message = "File is not a valid ParsedResume"
+
+
+class InvalidRenderOptionError(InvalidInputError):
+    """A theme/locale query parameter is not one rendercv knows."""
+
+    code = "invalid_render_option"
+    default_message = "Unknown render option"
+
+
+class PdfRenderError(ResumeCraftError):
+    """The typst/rendercv pipeline failed to produce a PDF.
+
+    500: the inputs were validated, so a failure here is on our side (a theme
+    bug, a font problem), not something the client can fix.
+    """
+
+    code = "pdf_render_failed"
+    status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+    default_message = "Failed to render the resume PDF"

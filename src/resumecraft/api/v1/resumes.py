@@ -1,12 +1,14 @@
+import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 
 from resumecraft.api.deps import CurrentUserDep, DbSession
 from resumecraft.core.celery_app import celery_app
+from resumecraft.rendering import DEFAULT_LOCALE, DEFAULT_THEME
 from resumecraft.schemas.job import JobAcceptedResponse
 from resumecraft.schemas.resume import GenerateResumeRequest, ResumeOut, UploadResumeRequest
-from resumecraft.services import job_service, resume_service
+from resumecraft.services import job_service, render_service, resume_service
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -49,3 +51,22 @@ async def upload_resume_file(
         db, user.user_id, raw=raw, content_type=file.content_type, title=title
     )
     return ResumeOut.model_validate(resume)
+
+
+@router.get("/{resume_id}/pdf")
+async def render_resume_pdf(
+    resume_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUserDep,
+    theme: Annotated[str, Query(description="rendercv theme name")] = DEFAULT_THEME,
+    locale: Annotated[str, Query(description="rendercv locale name")] = DEFAULT_LOCALE,
+) -> Response:
+    """Render a stored resume to PDF — synchronous, no job, no LLM."""
+    pdf_bytes, filename = await render_service.render_resume_pdf(
+        db, user.user_id, resume_id, theme=theme, locale=locale
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
