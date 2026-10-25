@@ -39,6 +39,12 @@ dev = [
     "import-linter>=2.1",
 ]
 
+[tool.uv]
+# CVE-2026-112940/112913/112907 fix lands in filelock 4.2.1, but unstructured
+# caps filelock<4. Its only usage is the stable FileLock API (nlp/tokenize.py),
+# so the cap is safe to override.
+override-dependencies = ["filelock>=4.2.1"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
