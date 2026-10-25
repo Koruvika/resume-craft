@@ -14,6 +14,8 @@ import asyncio
 import re
 from collections.abc import Awaitable, Callable
 
+from resumecraft.core.config import get_settings
+
 ProgressCallback = Callable[[int], Awaitable[None]]
 
 QUERY_TEMPLATES = [
@@ -94,10 +96,16 @@ async def run_company_research(
     """Run the fixed query set against GPTResearcher and return one
     {slug, query, report} dict per query, in QUERY_SLUGS order.
 
-    GPTResearcher is imported lazily (with its env bridge and sync-search
-    patch) so only the worker process loads the heavy dependency.
-    Per-query failures surface as a report of 'ERROR: <cause>' — the caller
-    decides whether partial results are worth keeping.
+    GPTResearcher is imported lazily (with its env bridge) so only the
+    worker process loads the heavy dependency. At most
+    settings.research_max_concurrency queries run at once — bursts of
+    concurrent long-context LLM calls trigger transient server-side
+    stalls on the provider. Each query is bounded by
+    settings.research_query_timeout and gets one fresh retry on timeout,
+    since a stalled call is almost always a transient throttle; a query
+    that stalls twice becomes a report rather than hanging the whole run.
+    Per-query failures surface as a report of 'ERROR: <cause>' — the
+    caller decides whether partial results are worth keeping.
     """
     from gpt_researcher import GPTResearcher
 
@@ -108,18 +116,37 @@ async def run_company_research(
         sources += build_source_urls(url)
 
     done_count = 0
+    settings = get_settings()
+    query_timeout = settings.research_query_timeout
+    semaphore = asyncio.Semaphore(settings.research_max_concurrency)
+
+    async def _run_attempt(query: str) -> str:
+        researcher = GPTResearcher(
+            query=query,
+            report_type="research_report",
+            source_urls=sources,
+            complement_source_urls=True,
+        )
+
+        async def _conduct_and_write() -> str:
+            await researcher.conduct_research()
+            return await researcher.write_report()
+
+        return await asyncio.wait_for(_conduct_and_write(), timeout=query_timeout)
 
     async def _run_single(query: str, slug: str) -> dict:
         nonlocal done_count
+        report: str | None = None
         try:
-            researcher = GPTResearcher(
-                query=query,
-                report_type="research_report",
-                source_urls=sources,
-                complement_source_urls=True,
-            )
-            await researcher.conduct_research()
-            report = await researcher.write_report()
+            for _attempt in range(2):
+                try:
+                    async with semaphore:
+                        report = await _run_attempt(query)
+                    break
+                except TimeoutError:
+                    continue
+            if report is None:
+                report = f"ERROR: query timed out after {query_timeout}s"
         except Exception as e:
             report = f"ERROR: {e}"
         done_count += 1
