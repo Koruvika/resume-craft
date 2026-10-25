@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --dev
+      - run: uv run ruff check src tests alembic
+      - run: uv run ruff format --check src tests alembic
+      - run: uv run mypy
+      - run: uv run lint-imports
+      - run: uv run pytest
+
+  db:
+    # Separate job: it needs a real PostgreSQL for `pytest -m db`, and
+    # `alembic check` is the only thing that catches models and migrations
+    # drifting apart.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: resumecraft
+          POSTGRES_PASSWORD: resumecraft
+          POSTGRES_DB: resumecraft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U resumecraft"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RC_DATABASE_HOST: localhost
+      RC_DATABASE_PORT: "5432"
+      RC_DATABASE_USER: resumecraft
+      RC_DATABASE_PASSWORD: resumecraft
+      RC_DATABASE_NAME: resumecraft
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --dev
+      - run: uv run alembic upgrade head
+      - run: uv run alembic check
+      - run: uv run pytest -m db
