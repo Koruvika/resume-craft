@@ -26,6 +26,7 @@ __all__ = [
     "PdfRenderError",
     "PermissionDeniedError",
     "ResumeCraftError",
+    "ResumeNotReadyError",
     "UnsupportedFileTypeError",
 ]
 
@@ -118,6 +119,17 @@ class EmailAlreadyRegisteredError(ConflictError):
 
     def __init__(self, email: str) -> None:
         super().__init__(details={"email": email})
+
+
+class ResumeNotReadyError(ConflictError):
+    """Render requested for a resume whose parse job has not completed."""
+
+    code = "resume_not_ready"
+    status_code = HTTPStatus.CONFLICT
+    default_message = "Resume is not ready yet"
+
+    def __init__(self, status: str, *, message: str | None = None) -> None:
+        super().__init__(message=message, details={"status": status})
 
 
 class UnsupportedFileTypeError(ResumeCraftError):

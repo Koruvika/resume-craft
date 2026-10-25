@@ -85,3 +85,17 @@ async def test_generate_pdf_bytes_renders_real_pdf() -> None:
 
     assert filename == "smoke.pdf"
     assert pdf_bytes.startswith(b"%PDF-")
+
+
+async def test_render_resume_pdf_rejects_pending_resume(db_session) -> None:
+    from resumecraft.core.enums import ResumeStatus
+    from resumecraft.core.exceptions import ResumeNotReadyError
+    from resumecraft.db.models import Resume
+
+    resume = Resume(user_id=uuid.uuid4(), title="Pending", status=ResumeStatus.PENDING)
+    db_session.add(resume)
+    await db_session.flush()
+
+    with pytest.raises(ResumeNotReadyError) as exc_info:
+        await render_service.render_resume_pdf(db_session, resume.user_id, resume.id)
+    assert exc_info.value.details["status"] == "pending"

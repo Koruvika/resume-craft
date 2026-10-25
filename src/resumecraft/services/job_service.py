@@ -15,6 +15,13 @@ async def create_generate_job(session: AsyncSession, user_id: uuid.UUID, input_d
     return job
 
 
+async def create_parse_job(session: AsyncSession, user_id: uuid.UUID, input_data: dict) -> Job:
+    job = Job(user_id=user_id, type=JobType.PARSE_RESUME, input=input_data)
+    await job_repo.create(session, job)
+    await session.commit()
+    return job
+
+
 async def attach_task_id(session: AsyncSession, job_id: uuid.UUID, celery_task_id: str) -> None:
     await job_repo.set_celery_task_id(session, job_id, celery_task_id)
     await session.commit()

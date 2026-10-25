@@ -11,6 +11,11 @@ class JobStatus(StrEnum):
 
 class JobType(StrEnum):
     GENERATE_RESUME = "generate_resume"
-    # Kept in sync with the DB enum (migration 0004; Postgres cannot drop enum
-    # values). Reserved for a future raw-text/PDF parse flow — no task yet.
     PARSE_RESUME = "parse_resume"
+
+
+class ResumeStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"

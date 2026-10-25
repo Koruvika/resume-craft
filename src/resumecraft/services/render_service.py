@@ -3,7 +3,8 @@ import uuid
 import anyio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from resumecraft.core.exceptions import NotFoundError, PdfRenderError
+from resumecraft.core.enums import ResumeStatus
+from resumecraft.core.exceptions import NotFoundError, PdfRenderError, ResumeNotReadyError
 from resumecraft.db.repositories import resume as resume_repo
 from resumecraft.rendering import (
     build_rendercv_model,
@@ -32,6 +33,8 @@ async def render_resume_pdf(
     resume = await resume_repo.get_by_id_for_user(session, resume_id, user_id)
     if resume is None:
         raise NotFoundError("resume", resume_id)
+    if resume.status != ResumeStatus.COMPLETED or resume.content is None:
+        raise ResumeNotReadyError(resume.status)
 
     parsed = ParsedResume.model_validate(resume.content)
     model = build_rendercv_model(parsed_resume_to_rendercv(parsed), options)

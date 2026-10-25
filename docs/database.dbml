@@ -34,6 +34,15 @@ enum job_status {
   cancelled
 }
 
+// Resume lifecycle for uploaded files (upload-file flow): PENDING at upload,
+// PROCESSING while the parse_resume job runs, then COMPLETED or FAILED.
+enum enum_resumestatus {
+  pending
+  processing
+  completed
+  failed
+}
+
 // ---------------------------------------------------------------------------- tables
 
 Table users {
@@ -80,7 +89,9 @@ Table resumes {
   id uuid [pk]
   user_id uuid [not null]
   title text [not null]
-  content jsonb [not null, note: 'GeneratedResume payload (title, summary, highlights, skills)']
+  content jsonb [note: 'ParsedResume payload; NULL while a parse job is still running']
+  status enum_resumestatus [not null, default: `COMPLETED`, note: 'pending → processing → completed/failed (parse job lifecycle)']
+  error text [note: 'Failure reason when status = FAILED']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz [note: 'Soft-delete marker; NULL means live. No trigger scoping — reads filter explicitly']

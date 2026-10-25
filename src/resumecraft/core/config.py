@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     llm_model: str = "gpt-4o-mini"
 
+    # LlamaCloud — PDF resume parsing (extract API).
+    llama_cloud_api_key: SecretStr | None = None
+
     # Auth — local JWT issuer: /auth/login signs tokens with this key.
     jwt_secret_key: SecretStr = SecretStr("dev-only-jwt-secret-key-change-me")
     access_token_expire_minutes: int = 60

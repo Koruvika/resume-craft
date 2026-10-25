@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "langchain>=1.0",
     "langchain-openai>=1.0",
+    "llama-cloud>=2.5.0",
     "structlog>=24.4",
     "pyjwt>=2.10",
     "httpx>=0.28",

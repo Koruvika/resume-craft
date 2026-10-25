@@ -29,6 +29,8 @@ def test_resume_table_columns() -> None:
         "user_id",
         "title",
         "content",
+        "status",
+        "error",
         "created_at",
         "updated_at",
         "deleted_at",

@@ -1183,6 +1183,23 @@ wheels = [
 ]
 
 [[package]]
+name = "llama-cloud"
+version = "2.19.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/33/7ec75a2dc5886fd01fc9e6c3f874eaa2d9764a07691a1058e3a46be31db3/llama_cloud-2.19.0.tar.gz", hash = "sha256:17cd945511c3f6bc2f64d73ec5ea24b31ed7d2401b49026a94d7d02b92c5fbf5", size = 3617684, upload-time = "2026-10-21T17:38:50.642Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/3e/faf83bc58f796f3fe3d72be9cd4caa614358b1c3af5185726f4f8c007f25/llama_cloud-2.19.0-py3-none-any.whl", hash = "sha256:28cebb305879fb84a67f1a43f28540cee988fed46867dfc7d3c6518e2d3b8257", size = 552449, upload-time = "2026-10-21T17:38:49.007Z" },
+]
+
+[[package]]
 name = "mako"
 version = "1.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1947,6 +1964,7 @@ dependencies = [
     { name = "httpx" },
     { name = "langchain" },
     { name = "langchain-openai" },
+    { name = "llama-cloud" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
@@ -1981,6 +1999,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "langchain", specifier = ">=1.0" },
     { name = "langchain-openai", specifier = ">=1.0" },
+    { name = "llama-cloud", specifier = ">=2.5.0" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "pyjwt", specifier = ">=2.10" },

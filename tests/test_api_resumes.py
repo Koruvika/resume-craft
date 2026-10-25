@@ -120,40 +120,54 @@ async def _upload_file(
     )
 
 
-async def test_upload_file_creates_resume(client, db_session) -> None:
+async def test_upload_file_accepts_json_asynchronously(client, db_session) -> None:
     response = await _upload_file(client, content=FILE_PAYLOAD)
-    assert response.status_code == 201
+    assert response.status_code == 202
     body = response.json()
-    assert body["title"] == "Staff Engineer"
-    assert body["content"]["contact_info"]["full_name"] == "Jane Doe"
+    assert body["status"] == "pending"
 
-    result = await db_session.execute(select(Resume))
-    assert len(result.scalars().all()) == 1
+    resume = (await db_session.execute(select(Resume))).scalars().one()
+    assert resume.id == uuid.UUID(body["resume_id"])
+    assert resume.status.value == "pending"
+    assert resume.content is None
+
+    job = await job_repo.get_by_id(db_session, uuid.UUID(body["job_id"]))
+    assert job is not None
+    assert job.celery_task_id == "fake-task-id"
+    assert job.input["resume_id"] == str(resume.id)
+    assert job.input["source_type"] == "json"
+    assert job.input["file_b64"]
 
 
-async def test_upload_file_accepts_custom_title(client) -> None:
+async def test_upload_file_accepts_pdf_asynchronously(client, db_session) -> None:
+    response = await _upload_file(
+        client, content=b"%PDF-fake", filename="resume.pdf", content_type="application/pdf"
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "pending"
+
+    resume = (await db_session.execute(select(Resume))).scalars().one()
+    assert resume.content is None
+    assert resume.title == "resume"
+    job = await job_repo.get_by_id(db_session, uuid.UUID(body["job_id"]))
+    assert job is not None
+    assert job.input["source_type"] == "pdf"
+    assert job.input["filename"] == "resume.pdf"
+
+
+async def test_upload_file_accepts_custom_title(client, db_session) -> None:
     response = await _upload_file(client, content=FILE_PAYLOAD, title="Custom title")
-    assert response.status_code == 201
-    assert response.json()["title"] == "Custom title"
+    assert response.status_code == 202
+    resume = (await db_session.execute(select(Resume))).scalars().one()
+    assert resume.title == "Custom title"
 
 
 async def test_upload_file_rejects_wrong_content_type(client) -> None:
     response = await _upload_file(client, content=FILE_PAYLOAD, content_type="text/plain")
     assert response.status_code == 422
-    assert response.json()["error"]["message"] == "File must be application/json"
-
-
-async def test_upload_file_rejects_invalid_json(client) -> None:
-    response = await _upload_file(client, content=b"{not json")
-    assert response.status_code == 422
-    assert response.json()["error"]["message"] == "File is not valid JSON"
-
-
-async def test_upload_file_rejects_schema_violation(client) -> None:
-    bad = json.dumps({"languages": [{"language": "English", "level": "nine"}]}).encode()
-    response = await _upload_file(client, content=bad)
-    assert response.status_code == 422
-    assert response.json()["error"]["message"]
+    assert "application/json" in response.json()["error"]["message"]
+    assert "application/pdf" in response.json()["error"]["message"]
 
 
 async def test_upload_file_rejects_missing_file(client) -> None:
@@ -161,10 +175,66 @@ async def test_upload_file_rejects_missing_file(client) -> None:
     assert response.status_code == 422
 
 
-async def test_upload_file_rejects_oversize(client, monkeypatch) -> None:
+async def test_upload_file_rejects_oversize_json(client, monkeypatch) -> None:
     monkeypatch.setattr(resume_service, "MAX_UPLOAD_BYTES", 10)
     response = await _upload_file(client, content=b"x" * 11)
     assert response.status_code == 413
+
+
+async def test_upload_file_rejects_oversize_pdf(client, monkeypatch) -> None:
+    monkeypatch.setattr(resume_service, "MAX_PDF_UPLOAD_BYTES", 10)
+    response = await _upload_file(
+        client, content=b"x" * 11, filename="resume.pdf", content_type="application/pdf"
+    )
+    assert response.status_code == 413
+
+
+async def test_get_resume_returns_status(client) -> None:
+    upload = await _upload_file(client, content=FILE_PAYLOAD)
+    resume_id = upload.json()["resume_id"]
+
+    response = await client.get(f"/api/v1/resumes/{resume_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == resume_id
+    assert body["status"] == "pending"
+    assert body["content"] is None
+
+
+async def test_get_resume_returns_completed_content(client, db_session) -> None:
+    from resumecraft.core.enums import ResumeStatus
+
+    upload = await _upload_file(client, content=FILE_PAYLOAD)
+    resume_id = upload.json()["resume_id"]
+    resume = (await db_session.execute(select(Resume))).scalars().one()
+    resume.status = ResumeStatus.COMPLETED
+    resume.content = UPLOAD_JSON["resume_json"]
+    await db_session.commit()
+
+    response = await client.get(f"/api/v1/resumes/{resume_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["content"]["contact_info"]["full_name"] == "Jane Doe"
+
+
+async def test_get_resume_unknown_returns_404(client) -> None:
+    response = await client.get(f"/api/v1/resumes/{uuid.uuid4()}")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "resume_not_found"
+
+
+async def test_get_resume_requires_auth(db_session) -> None:
+    app = create_app()
+
+    async def _session_override():
+        yield db_session
+
+    app.dependency_overrides[get_session] = _session_override
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        response = await c.get(f"/api/v1/resumes/{uuid.uuid4()}")
+    assert response.status_code == 401
 
 
 async def _render_pdf(client, resume_id, *, theme=None, locale=None):
@@ -221,3 +291,14 @@ async def test_render_resume_pdf_rejects_unknown_locale(client) -> None:
     response = await _render_pdf(client, uuid.uuid4(), locale="klingon")
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_render_option"
+
+
+async def test_render_resume_pdf_rejects_pending_resume(client, db_session, monkeypatch) -> None:
+    upload = await _upload_file(client, content=FILE_PAYLOAD)
+    resume_id = upload.json()["resume_id"]
+
+    response = await _render_pdf(client, resume_id)
+    assert response.status_code == 409
+    body = response.json()["error"]
+    assert body["code"] == "resume_not_ready"
+    assert body["details"]["status"] == "pending"
