@@ -1,6 +1,7 @@
 import base64
 import json
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any, Literal
 from uuid import UUID
@@ -14,12 +15,13 @@ from resumecraft.core.exceptions import (
     FileTooLargeError,
     InvalidResumeFileError,
     NotFoundError,
+    ResumeNotReadyError,
     UnsupportedFileTypeError,
 )
 from resumecraft.db.models import Job, Resume
 from resumecraft.db.repositories import resume as resume_repo
 from resumecraft.schemas.parsed_resume import ParsedResume
-from resumecraft.schemas.resume import ParseUploadJobInput
+from resumecraft.schemas.resume import ParseUploadJobInput, ResumeUpdateRequest
 
 ProgressFn = Callable[[float], Awaitable[None]]
 
@@ -89,6 +91,41 @@ async def get_resume_for_user(session: AsyncSession, resume_id: UUID, user_id: U
     if resume is None:
         raise NotFoundError("resume", resume_id)
     return resume
+
+
+async def list_resumes(
+    session: AsyncSession,
+    user_id: UUID,
+    *,
+    limit: int,
+    offset: int,
+    search: str | None = None,
+) -> tuple[list[Resume], int]:
+    return await resume_repo.list_for_user(
+        session, user_id, limit=limit, offset=offset, search=search
+    )
+
+
+async def update_resume(
+    session: AsyncSession, user_id: UUID, resume_id: UUID, request: ResumeUpdateRequest
+) -> Resume:
+    resume = await get_resume_for_user(session, resume_id, user_id)
+    if request.content is not None:
+        if resume.status != ResumeStatus.COMPLETED or resume.content is None:
+            raise ResumeNotReadyError(resume.status)
+        resume.content = request.content.model_dump()
+    if request.title is not None:
+        resume.title = request.title
+    await session.commit()
+    # updated_at is server-generated (onupdate); reload it for the response.
+    await session.refresh(resume)
+    return resume
+
+
+async def soft_delete_resume(session: AsyncSession, user_id: UUID, resume_id: UUID) -> None:
+    resume = await get_resume_for_user(session, resume_id, user_id)
+    resume.deleted_at = datetime.now(UTC)
+    await session.commit()
 
 
 async def create_pending_import(

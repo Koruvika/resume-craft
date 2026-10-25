@@ -6,12 +6,40 @@ from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 from resumecraft.api.deps import CurrentUserDep, DbSession
 from resumecraft.core.celery_app import celery_app
 from resumecraft.rendering import DEFAULT_LOCALE, DEFAULT_THEME
-from resumecraft.schemas.resume import ResumeOut, UploadAcceptedResponse, UploadResumeRequest
+from resumecraft.schemas.resume import (
+    ResumeListOut,
+    ResumeOut,
+    ResumeSummaryOut,
+    ResumeUpdateRequest,
+    UploadAcceptedResponse,
+    UploadResumeRequest,
+)
 from resumecraft.services import job_service, render_service, resume_service
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
 PARSE_RESUME_TASK = "resumecraft.worker.tasks.parse_resume"
+
+
+@router.get("", response_model=ResumeListOut)
+async def list_resumes(
+    db: DbSession,
+    user: CurrentUserDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    search: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
+) -> ResumeListOut:
+    """Browse the current user's resumes (newest first), paginated, with an
+    optional case-insensitive title search. Soft-deleted rows never appear."""
+    items, total = await resume_service.list_resumes(
+        db, user.user_id, limit=limit, offset=offset, search=search
+    )
+    return ResumeListOut(
+        items=[ResumeSummaryOut.model_validate(r) for r in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/upload", response_model=ResumeOut, status_code=201)
@@ -56,6 +84,22 @@ async def get_resume(resume_id: uuid.UUID, db: DbSession, user: CurrentUserDep) 
     asynchronous upload to know when the content is ready."""
     resume = await resume_service.get_resume_for_user(db, resume_id, user.user_id)
     return ResumeOut.model_validate(resume)
+
+
+@router.patch("/{resume_id}", response_model=ResumeOut)
+async def update_resume(
+    resume_id: uuid.UUID, request: ResumeUpdateRequest, db: DbSession, user: CurrentUserDep
+) -> ResumeOut:
+    """Partially update a resume (title and/or content). Content may only be
+    replaced once the resume is COMPLETED."""
+    resume = await resume_service.update_resume(db, user.user_id, resume_id, request)
+    return ResumeOut.model_validate(resume)
+
+
+@router.delete("/{resume_id}", status_code=204)
+async def delete_resume(resume_id: uuid.UUID, db: DbSession, user: CurrentUserDep) -> None:
+    """Soft-delete: sets deleted_at; the row disappears from all reads."""
+    await resume_service.soft_delete_resume(db, user.user_id, resume_id)
 
 
 @router.get("/{resume_id}/pdf")

@@ -1,6 +1,7 @@
 import base64
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -9,10 +10,13 @@ from resumecraft.core.exceptions import (
     FileTooLargeError,
     InvalidResumeFileError,
     NotFoundError,
+    ResumeNotReadyError,
     UnsupportedFileTypeError,
 )
 from resumecraft.db.models import Job, Resume
+from resumecraft.db.repositories import resume as resume_repo
 from resumecraft.schemas.parsed_resume import ContactInfo, ParsedResume
+from resumecraft.schemas.resume import ResumeUpdateRequest
 from resumecraft.services import resume_service
 
 
@@ -23,6 +27,31 @@ async def _progress_spy() -> tuple[list[float], object]:
         calls.append(progress)
 
     return calls, update_progress
+
+
+BASE_TIME = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+async def _seed_resume(
+    session,
+    user_id: uuid.UUID,
+    *,
+    title: str,
+    created_at: datetime,
+    deleted: bool = False,
+) -> Resume:
+    resume = Resume(
+        user_id=user_id,
+        title=title,
+        content={"summary": "seed"},
+        status=ResumeStatus.COMPLETED,
+        created_at=created_at,
+    )
+    if deleted:
+        resume.deleted_at = created_at + timedelta(hours=1)
+    await resume_repo.create(session, resume)
+    await session.commit()
+    return resume
 
 
 async def test_import_parsed_stores_resume(db_session) -> None:
@@ -264,3 +293,118 @@ async def test_parse_upload_unknown_resume_raises_not_found(db_session) -> None:
 
     with pytest.raises(NotFoundError):
         await resume_service.parse_upload(db_session, job, update_progress)
+
+
+async def test_list_resumes_scopes_orders_and_excludes_deleted(db_session) -> None:
+    user_id = uuid.uuid4()
+    older = await _seed_resume(db_session, user_id, title="Alpha resume", created_at=BASE_TIME)
+    newer = await _seed_resume(
+        db_session, user_id, title="Beta resume", created_at=BASE_TIME + timedelta(minutes=1)
+    )
+    await _seed_resume(db_session, uuid.uuid4(), title="Other user's", created_at=BASE_TIME)
+    await _seed_resume(db_session, user_id, title="Deleted", created_at=BASE_TIME, deleted=True)
+
+    items, total = await resume_service.list_resumes(db_session, user_id, limit=10, offset=0)
+    assert total == 2
+    assert [r.id for r in items] == [newer.id, older.id]
+
+
+async def test_list_resumes_paginates_and_searches_title_ci(db_session) -> None:
+    user_id = uuid.uuid4()
+    await _seed_resume(db_session, user_id, title="Backend Engineer", created_at=BASE_TIME)
+    await _seed_resume(
+        db_session, user_id, title="Frontend Dev", created_at=BASE_TIME + timedelta(minutes=1)
+    )
+
+    page, total = await resume_service.list_resumes(db_session, user_id, limit=1, offset=1)
+    assert total == 2
+    assert len(page) == 1
+    assert page[0].title == "Backend Engineer"
+
+    hits, total = await resume_service.list_resumes(
+        db_session, user_id, limit=10, offset=0, search="BACKEND"
+    )
+    assert total == 1
+    assert [r.title for r in hits] == ["Backend Engineer"]
+
+
+async def test_update_resume_title_and_content(db_session) -> None:
+    resume = await resume_service.import_parsed(
+        db_session, uuid.uuid4(), ParsedResume(summary="old")
+    )
+    request = ResumeUpdateRequest(title="Renamed", content=ParsedResume(summary="new summary"))
+
+    updated = await resume_service.update_resume(db_session, resume.user_id, resume.id, request)
+
+    assert updated.title == "Renamed"
+    assert updated.content["summary"] == "new summary"
+    assert updated.status == ResumeStatus.COMPLETED
+
+
+async def test_update_resume_title_only_keeps_content(db_session) -> None:
+    resume = await resume_service.import_parsed(
+        db_session, uuid.uuid4(), ParsedResume(summary="keep me")
+    )
+
+    updated = await resume_service.update_resume(
+        db_session,
+        resume.user_id,
+        resume.id,
+        ResumeUpdateRequest(title="Renamed"),
+    )
+
+    assert updated.title == "Renamed"
+    assert updated.content["summary"] == "keep me"
+
+
+async def test_update_resume_content_rejected_when_not_completed(db_session) -> None:
+    resume = await resume_service.create_pending_import(
+        db_session,
+        uuid.uuid4(),
+        source_type="json",
+        raw=json.dumps({"summary": "s"}).encode(),
+        filename="resume.json",
+    )
+
+    with pytest.raises(ResumeNotReadyError):
+        await resume_service.update_resume(
+            db_session,
+            resume.user_id,
+            resume.id,
+            ResumeUpdateRequest(content=ParsedResume(summary="x")),
+        )
+
+    updated = await resume_service.update_resume(
+        db_session, resume.user_id, resume.id, ResumeUpdateRequest(title="Still pending")
+    )
+    assert updated.title == "Still pending"
+    assert updated.status == ResumeStatus.PENDING
+
+
+async def test_update_resume_unknown_id_raises_not_found(db_session) -> None:
+    with pytest.raises(NotFoundError):
+        await resume_service.update_resume(
+            db_session,
+            uuid.uuid4(),
+            uuid.uuid4(),
+            ResumeUpdateRequest(title="Nope"),
+        )
+
+
+async def test_soft_delete_resume_hides_but_keeps_row(db_session) -> None:
+    resume = await _seed_resume(db_session, uuid.uuid4(), title="Doomed", created_at=BASE_TIME)
+
+    await resume_service.soft_delete_resume(db_session, resume.user_id, resume.id)
+
+    with pytest.raises(NotFoundError):
+        await resume_service.get_resume_for_user(db_session, resume.id, resume.user_id)
+
+    _, total = await resume_service.list_resumes(db_session, resume.user_id, limit=10, offset=0)
+    assert total == 0
+
+    stored = await db_session.get(Resume, resume.id)
+    assert stored is not None
+    assert stored.deleted_at is not None
+
+    with pytest.raises(NotFoundError):
+        await resume_service.soft_delete_resume(db_session, resume.user_id, resume.id)
