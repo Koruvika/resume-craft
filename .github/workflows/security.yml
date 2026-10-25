@@ -1,0 +1,163 @@
+name: Security Scan
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  security-check:
+    name: Security Checks (Secret, Bandit, Pip-Audit)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv & Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          python-version: "3.13"
+
+      - name: Check for hardcoded secrets (detect-private-key)
+        # Uses the detect-private-key hook declared in .pre-commit-config.yaml
+        run: uvx pre-commit run detect-private-key --all-files
+
+      - name: Run Bandit (SAST)
+        # Uses .bandit (excludes tests/alembic; skips B101 for the
+        # assert-isinstance narrowing in api/errors.py handlers)
+        run: uvx --from "bandit[toml]" bandit -r src/ -c .bandit -f txt
+
+      - name: Run Pip Audit (Dependency Check)
+        run: |
+          # --no-hashes: pip-audit queries its own DB, no hashes needed
+          # --no-emit-project: drops the `-e .` line (the project itself is not a dependency)
+          uv export --format requirements-txt --no-dev --no-hashes --no-emit-project > requirements.txt
+          uvx pip-audit -r requirements.txt
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      # codeql-action v4 calls the workflow-runs API to pick the CodeQL CLI
+      actions: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'python' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          upload: false
+          output: sarif-results
+
+      - name: Upload CodeQL SARIF as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-results-${{ matrix.language }}
+          path: sarif-results
+          retention-days: 7
+
+  semgrep:
+    name: Semgrep Analysis
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan --config="p/security-audit" --config="p/secrets" --config="p/python" src/
+
+  trufflehog:
+    name: TruffleHog Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          extra_args: --only-verified
+
+  trivy:
+    name: Trivy Vulnerability Scanner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+  hadolint:
+    name: Dockerfile Linter (Hadolint)
+    runs-on: ubuntu-latest
+    # No Dockerfile yet — the job activates automatically once one is added
+    if: ${{ hashFiles('Dockerfile') != '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+
+  checkov:
+    name: IaC Security (Checkov)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ./
+          framework: all
+          soft_fail: true
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: spdx-json
+          artifact-name: sbom.spdx.json

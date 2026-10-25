@@ -1,0 +1,9 @@
+exclude_dirs:
+  - tests
+  - .venv
+  - venv
+  - alembic
+
+skips:
+  # B101: assert isinstance(...) narrowing in the api/errors.py exception handlers
+  - B101
