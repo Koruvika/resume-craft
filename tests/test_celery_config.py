@@ -11,5 +11,5 @@ def test_celery_app_configured() -> None:
     assert celery_app.conf.worker_prefetch_multiplier == 1
 
 
-def test_generate_resume_task_registered() -> None:
-    assert "resumecraft.worker.tasks.generate_resume" in celery_app.tasks
+def test_parse_resume_task_registered() -> None:
+    assert "resumecraft.worker.tasks.parse_resume" in celery_app.tasks

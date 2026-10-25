@@ -11,42 +11,6 @@ from resumecraft.db.session import get_session
 from resumecraft.main import create_app
 from resumecraft.services import resume_service
 
-VALID_PAYLOAD = {"resume_text": "x" * 60, "target_role": "Backend Engineer"}
-
-
-async def test_generate_resume_accepted(client, db_session) -> None:
-    response = await client.post("/api/v1/resumes/generate", json=VALID_PAYLOAD)
-    assert response.status_code == 202
-    body = response.json()
-    assert body["status"] == "pending"
-
-    job_id = uuid.UUID(body["job_id"])
-    job = await job_repo.get_by_id(db_session, job_id)
-    assert job is not None
-    assert job.celery_task_id == "fake-task-id"
-    assert job.input == VALID_PAYLOAD
-
-
-async def test_generate_resume_rejects_short_text(client) -> None:
-    response = await client.post(
-        "/api/v1/resumes/generate", json={"resume_text": "short", "target_role": "x"}
-    )
-    assert response.status_code == 422
-
-
-async def test_generate_resume_requires_auth(db_session, monkeypatch) -> None:
-    app = create_app()
-
-    async def _session_override():
-        yield db_session
-
-    app.dependency_overrides[get_session] = _session_override
-    transport = ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        response = await c.post("/api/v1/resumes/generate", json=VALID_PAYLOAD)
-    assert response.status_code == 401
-
-
 UPLOAD_JSON = {
     "resume_json": {
         "contact_info": {"full_name": "Jane Doe", "headline": "Staff Engineer"},

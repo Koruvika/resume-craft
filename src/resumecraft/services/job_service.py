@@ -8,13 +8,6 @@ from resumecraft.db.models import Job
 from resumecraft.db.repositories import job as job_repo
 
 
-async def create_generate_job(session: AsyncSession, user_id: uuid.UUID, input_data: dict) -> Job:
-    job = Job(user_id=user_id, type=JobType.GENERATE_RESUME, input=input_data)
-    await job_repo.create(session, job)
-    await session.commit()
-    return job
-
-
 async def create_parse_job(session: AsyncSession, user_id: uuid.UUID, input_data: dict) -> Job:
     job = Job(user_id=user_id, type=JobType.PARSE_RESUME, input=input_data)
     await job_repo.create(session, job)

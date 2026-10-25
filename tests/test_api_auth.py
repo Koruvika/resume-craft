@@ -72,7 +72,7 @@ async def test_me_without_token_is_401(plain_client: httpx.AsyncClient) -> None:
     assert response.status_code == 401
 
 
-async def test_register_then_generate_resume_full_flow(
+async def test_register_then_upload_resume_full_flow(
     plain_client: httpx.AsyncClient, monkeypatch
 ) -> None:
     """Token from /auth/login works on the domain endpoints too (real auth path)."""
@@ -85,17 +85,14 @@ async def test_register_then_generate_resume_full_flow(
     await _register(plain_client, REGISTER)
     token = (await _login(plain_client, LOGIN)).json()["access_token"]
     response = await plain_client.post(
-        "/api/v1/resumes/generate",
+        "/api/v1/resumes/upload-file",
         headers={"Authorization": f"Bearer {token}"},
-        json={
-            "resume_text": "x" * 60,
-            "target_role": "Backend Engineer",
-        },
+        files={"file": ("resume.json", b'{"summary": "ok"}', "application/json")},
     )
     assert response.status_code == 202
-    job_id = response.json()["job_id"]
+    resume_id = response.json()["resume_id"]
     response = await plain_client.get(
-        f"/api/v1/jobs/{job_id}", headers={"Authorization": f"Bearer {token}"}
+        f"/api/v1/resumes/{resume_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
     assert response.json()["status"] == "pending"

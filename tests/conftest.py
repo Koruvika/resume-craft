@@ -52,10 +52,7 @@ async def client(db_session, monkeypatch) -> httpx.AsyncClient:
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id=TEST_USER_ID)
 
     def fake_send_task(name, args=None, kwargs=None, **_):
-        assert name in {
-            "resumecraft.worker.tasks.generate_resume",
-            "resumecraft.worker.tasks.parse_resume",
-        }
+        assert name == "resumecraft.worker.tasks.parse_resume"
         assert kwargs is not None and "job_id" in kwargs
         return SimpleNamespace(id="fake-task-id")
 

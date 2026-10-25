@@ -24,7 +24,7 @@ async def session_factory():
 
 async def _make_job(factory) -> uuid.UUID:
     async with factory() as session:
-        job = Job(user_id=uuid.uuid4(), type=JobType.GENERATE_RESUME, input={})
+        job = Job(user_id=uuid.uuid4(), type=JobType.PARSE_RESUME, input={})
         session.add(job)
         await session.commit()
         return job.id

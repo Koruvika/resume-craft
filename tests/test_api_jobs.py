@@ -10,7 +10,7 @@ from resumecraft.services import job_service
 
 
 async def test_get_job(client, db_session) -> None:
-    job = await job_service.create_generate_job(db_session, TEST_USER_ID, {"a": 1})
+    job = await job_service.create_parse_job(db_session, TEST_USER_ID, {"a": 1})
     response = await client.get(f"/api/v1/jobs/{job.id}")
     assert response.status_code == 200
     body = response.json()
@@ -20,7 +20,7 @@ async def test_get_job(client, db_session) -> None:
 
 
 async def test_get_job_of_other_user_is_404(client, db_session) -> None:
-    job = await job_service.create_generate_job(db_session, uuid.uuid4(), {"a": 1})
+    job = await job_service.create_parse_job(db_session, uuid.uuid4(), {"a": 1})
     response = await client.get(f"/api/v1/jobs/{job.id}")
     assert response.status_code == 404
 
