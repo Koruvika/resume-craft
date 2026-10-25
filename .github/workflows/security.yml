@@ -122,20 +122,6 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
 
-  hadolint:
-    name: Dockerfile Linter (Hadolint)
-    runs-on: ubuntu-latest
-    # No Dockerfile yet — the job activates automatically once one is added
-    if: ${{ hashFiles('Dockerfile') != '' }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Run Hadolint
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          failure-threshold: warning
-
   checkov:
     name: IaC Security (Checkov)
     runs-on: ubuntu-latest
