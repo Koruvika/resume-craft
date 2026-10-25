@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from resumecraft.core.enums import ResumeStatus
 from resumecraft.schemas.parsed_resume import ParsedResume
@@ -52,3 +52,42 @@ class ResumeOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+
+class ResumeSummaryOut(BaseModel):
+    """List row: everything needed to browse/paginate without the heavy content."""
+
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    title: str
+    status: ResumeStatus
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ResumeListOut(BaseModel):
+    items: list[ResumeSummaryOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class ResumeUpdateRequest(BaseModel):
+    """Partial update: at least one of title/content must be provided.
+
+    Content may only be replaced on a COMPLETED resume (409 resume_not_ready
+    otherwise) so a client can't race an in-flight parse job.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: ParsedResume | None = None
+
+    @model_validator(mode="after")
+    def _require_one_field(self) -> Self:
+        if self.title is None and self.content is None:
+            raise ValueError("Provide at least one of: title, content")
+        return self
