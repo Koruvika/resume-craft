@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from resumecraft.core.enums import ResearchStatus
 
@@ -47,6 +48,32 @@ class ResearchReportOut(BaseModel):
     slug: str
     query: str
     report: str
+
+
+class CompanyResearchUpdateRequest(BaseModel):
+    """Partial update: at least one field must be provided. Omitted fields are
+    left alone; `website: null` clears the website.
+
+    Renaming does not re-run the research. Reports may only be replaced on a
+    COMPLETED research (409 research_not_ready otherwise) so a client can't
+    race an in-flight company_research job.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    company_name: str | None = Field(default=None, min_length=1, max_length=255)
+    website: HttpUrl | None = None
+    reports: list[ResearchReportOut] | None = None
+
+    @model_validator(mode="after")
+    def _check_fields(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one of: company_name, website, reports")
+        if "company_name" in self.model_fields_set and self.company_name is None:
+            raise ValueError("company_name cannot be null")
+        if "reports" in self.model_fields_set and self.reports is None:
+            raise ValueError("reports cannot be null")
+        return self
 
 
 class CompanyResearchOut(BaseModel):

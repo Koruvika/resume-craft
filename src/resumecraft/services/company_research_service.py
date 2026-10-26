@@ -11,11 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from resumecraft.core.config import get_settings
 from resumecraft.core.enums import ResearchStatus
-from resumecraft.core.exceptions import NotFoundError
+from resumecraft.core.exceptions import NotFoundError, ResearchNotReadyError
 from resumecraft.db.models import CompanyResearch, Job
 from resumecraft.db.repositories import company_research as research_repo
 from resumecraft.db.repositories import job as job_repo
-from resumecraft.schemas.company_research import CompanyResearchJobInput
+from resumecraft.schemas.company_research import (
+    CompanyResearchJobInput,
+    CompanyResearchUpdateRequest,
+)
 
 ProgressFn = Callable[[float], Awaitable[None]]
 
@@ -180,6 +183,28 @@ async def run_research(
     await session.commit()
     await update_progress(1.0)
     return {"research_id": str(research.id)}
+
+
+async def update_research(
+    session: AsyncSession,
+    user_id: UUID,
+    research_id: UUID,
+    request: CompanyResearchUpdateRequest,
+) -> CompanyResearch:
+    research = await get_research_for_user(session, research_id, user_id)
+    fields = request.model_fields_set
+    if "reports" in fields and request.reports is not None:
+        if research.status != ResearchStatus.COMPLETED:
+            raise ResearchNotReadyError(research.status)
+        research.reports = [r.model_dump() for r in request.reports]
+    if "company_name" in fields and request.company_name is not None:
+        research.company_name = request.company_name
+    if "website" in fields:
+        research.website = str(request.website) if request.website is not None else None
+    await session.commit()
+    # updated_at is server-generated (onupdate); reload it for the response.
+    await session.refresh(research)
+    return research
 
 
 async def soft_delete_research(session: AsyncSession, user_id: UUID, research_id: UUID) -> None:
