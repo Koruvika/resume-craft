@@ -25,6 +25,7 @@ __all__ = [
     "NotFoundError",
     "PdfRenderError",
     "PermissionDeniedError",
+    "ResearchNotReadyError",
     "ResumeCraftError",
     "ResumeNotReadyError",
     "UnsupportedFileTypeError",
@@ -130,6 +131,17 @@ class ResumeNotReadyError(ConflictError):
 
     def __init__(self, status: str, *, message: str | None = None) -> None:
         super().__init__(message=message, details={"status": status})
+
+
+class ResearchNotReadyError(ConflictError):
+    """Reports edit requested for a research whose job has not completed."""
+
+    code = "research_not_ready"
+    status_code = HTTPStatus.CONFLICT
+    default_message = "Company research is not ready yet"
+
+    def __init__(self, status: str) -> None:
+        super().__init__(details={"status": status})
 
 
 class UnsupportedFileTypeError(ResumeCraftError):

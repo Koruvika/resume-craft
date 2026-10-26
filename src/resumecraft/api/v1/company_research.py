@@ -11,6 +11,7 @@ from resumecraft.schemas.company_research import (
     CompanyResearchOut,
     CompanyResearchRequest,
     CompanyResearchSummaryOut,
+    CompanyResearchUpdateRequest,
 )
 from resumecraft.services import company_research_service, job_service
 
@@ -83,3 +84,28 @@ async def get_company_research(
     POST /company-research to know when the reports are ready."""
     research = await company_research_service.get_research_for_user(db, research_id, user.user_id)
     return CompanyResearchOut.model_validate(research)
+
+
+@router.patch("/{research_id}", response_model=CompanyResearchOut)
+async def update_company_research(
+    research_id: uuid.UUID,
+    request: CompanyResearchUpdateRequest,
+    db: DbSession,
+    user: CurrentUserDep,
+) -> CompanyResearchOut:
+    """Partially update a research (company name, website and/or reports).
+    Renaming does not re-run the research; reports may only be replaced once
+    the research is COMPLETED."""
+    research = await company_research_service.update_research(
+        db, user.user_id, research_id, request
+    )
+    return CompanyResearchOut.model_validate(research)
+
+
+@router.delete("/{research_id}", status_code=204)
+async def delete_company_research(
+    research_id: uuid.UUID, db: DbSession, user: CurrentUserDep
+) -> None:
+    """Soft-delete: sets deleted_at; the row disappears from all reads and
+    from de-duplication."""
+    await company_research_service.soft_delete_research(db, user.user_id, research_id)

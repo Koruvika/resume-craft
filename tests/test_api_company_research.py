@@ -298,3 +298,133 @@ async def test_list_researches_requires_auth(db_session) -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         response = await c.get("/api/v1/company-research")
     assert response.status_code == 401
+
+
+async def test_update_research_renames_and_changes_website(client, db_session) -> None:
+    research = await _seed(
+        db_session, TEST_USER_ID, company_name="Acme", created_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    response = await client.patch(
+        f"/api/v1/company-research/{research.id}",
+        json={"company_name": "Acme Corp", "website": "https://acme.io"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["company_name"] == "Acme Corp"
+    assert body["website"] == "https://acme.io/"
+    assert body["status"] == "pending"
+
+
+async def test_update_research_null_website_clears_it(client, db_session) -> None:
+    research = await _seed(
+        db_session, TEST_USER_ID, company_name="Acme", created_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+    await client.patch(
+        f"/api/v1/company-research/{research.id}", json={"website": "https://acme.io"}
+    )
+
+    response = await client.patch(f"/api/v1/company-research/{research.id}", json={"website": None})
+
+    assert response.status_code == 200
+    assert response.json()["website"] is None
+    assert response.json()["company_name"] == "Acme"
+
+
+async def test_update_research_replaces_reports_when_completed(client, db_session) -> None:
+    research = await _seed(
+        db_session,
+        TEST_USER_ID,
+        company_name="Acme",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        completed=True,
+    )
+    reports = [{"slug": "customers", "query": "Who?", "report": "Edited."}]
+
+    response = await client.patch(
+        f"/api/v1/company-research/{research.id}", json={"reports": reports}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reports"] == reports
+
+
+async def test_update_research_reports_before_completed_is_409(client, db_session) -> None:
+    research = await _seed(
+        db_session, TEST_USER_ID, company_name="Acme", created_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    response = await client.patch(
+        f"/api/v1/company-research/{research.id}",
+        json={"reports": [{"slug": "customers", "query": "Who?", "report": "Early."}]},
+    )
+
+    assert response.status_code == 409
+    body = response.json()["error"]
+    assert body["code"] == "research_not_ready"
+    assert body["details"] == {"status": "pending"}
+
+
+async def test_update_research_rejects_empty_and_invalid_bodies(client, db_session) -> None:
+    research = await _seed(
+        db_session, TEST_USER_ID, company_name="Acme", created_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+    url = f"/api/v1/company-research/{research.id}"
+
+    for body in (
+        {},
+        {"company_name": ""},
+        {"company_name": None},
+        {"website": "not-a-url"},
+        {"reports": None},
+        {"status": "completed"},
+    ):
+        response = await client.patch(url, json=body)
+        assert response.status_code == 422, body
+
+
+async def test_update_research_other_user_is_404(client, db_session) -> None:
+    research = await _seed(
+        db_session,
+        uuid.uuid4(),
+        company_name="Not mine",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    response = await client.patch(
+        f"/api/v1/company-research/{research.id}", json={"company_name": "Mine now"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "company_research_not_found"
+
+
+async def test_delete_research_soft_deletes(client, db_session) -> None:
+    research = await _seed(
+        db_session, TEST_USER_ID, company_name="Acme", created_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    response = await client.delete(f"/api/v1/company-research/{research.id}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert (await client.get(f"/api/v1/company-research/{research.id}")).status_code == 404
+    assert (await client.delete(f"/api/v1/company-research/{research.id}")).status_code == 404
+    await db_session.refresh(research)
+    assert research.deleted_at is not None
+
+
+async def test_delete_research_other_user_is_404(client, db_session) -> None:
+    research = await _seed(
+        db_session,
+        uuid.uuid4(),
+        company_name="Not mine",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    response = await client.delete(f"/api/v1/company-research/{research.id}")
+
+    assert response.status_code == 404
+    await db_session.refresh(research)
+    assert research.deleted_at is None
