@@ -36,10 +36,11 @@ jobs:
 
       - name: Run Pip Audit (Dependency Check)
         run: |
-          # --no-hashes: pip-audit queries its own DB, no hashes needed
-          # --no-emit-project: drops the `-e .` line (the project itself is not a dependency)
-          uv export --format requirements-txt --no-dev --no-hashes --no-emit-project > requirements.txt
-          uvx pip-audit -r requirements.txt
+          # Audit the environment synced from uv.lock, not a requirements
+          # export: pip-audit enumerates requirement files via `pip install
+          # --dry-run`, whose resolver fails ResolutionImpossible whenever a
+          # uv override-dependencies bumps past a transitive cap.
+          uv run --no-group dev --with pip-audit pip-audit
 
   codeql:
     name: CodeQL Analysis

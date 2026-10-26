@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import pytest
@@ -74,6 +75,33 @@ async def test_flow_marks_failed_on_timeout(session_factory) -> None:
     job = await _get_job(session_factory, job_id)
     assert job.status == JobStatus.FAILED
     assert "timed out" in (job.error or "")
+
+
+async def test_flow_supports_concurrent_progress_callbacks(session_factory) -> None:
+    job_id = await _make_job(session_factory)
+
+    async def work(session, job, update_progress) -> dict:
+        await asyncio.gather(update_progress(0.3), update_progress(0.6))
+        return {"done": True}
+
+    await run_job_flow(session_factory, job_id, work)
+    job = await _get_job(session_factory, job_id)
+    assert job.status == JobStatus.COMPLETED
+    assert job.progress in (0.3, 0.6)
+    assert job.error is None
+
+
+async def test_flow_marks_failed_after_concurrent_progress(session_factory) -> None:
+    job_id = await _make_job(session_factory)
+
+    async def work(session, job, update_progress) -> dict:
+        await asyncio.gather(update_progress(0.3), update_progress(0.6))
+        raise ValueError("boom")
+
+    await run_job_flow(session_factory, job_id, work)
+    job = await _get_job(session_factory, job_id)
+    assert job.status == JobStatus.FAILED
+    assert "boom" in (job.error or "")
 
 
 async def test_flow_raises_for_missing_job(session_factory) -> None:

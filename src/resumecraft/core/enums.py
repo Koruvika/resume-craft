@@ -12,9 +12,17 @@ class JobStatus(StrEnum):
 class JobType(StrEnum):
     GENERATE_RESUME = "generate_resume"
     PARSE_RESUME = "parse_resume"
+    COMPANY_RESEARCH = "company_research"
 
 
 class ResumeStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ResearchStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"

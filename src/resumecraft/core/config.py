@@ -39,6 +39,18 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     llm_model: str = "gpt-4o-mini"
 
+    # GPTResearcher — company research jobs. Web search retriever: tavily when
+    # a key is set, else the free duckduckgo fallback. The embedding string is
+    # gpt-researcher's '<provider>:<model>' form and must point at an
+    # embeddings-capable endpoint.
+    tavily_api_key: SecretStr | None = None
+    embedding_model: str = "openai:text-embedding-3-small"
+    # Per-query wall-clock budget; must stay under celery_soft_time_limit.
+    research_query_timeout: int = 240
+    # Max research queries in flight at once; bursts of concurrent LLM calls
+    # trigger server-side stalls on the LLM provider.
+    research_max_concurrency: int = 2
+
     # LlamaCloud — PDF resume parsing (extract API).
     llama_cloud_api_key: SecretStr | None = None
 

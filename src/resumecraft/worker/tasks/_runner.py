@@ -35,30 +35,40 @@ async def run_job_flow(
             raise JobNotFoundError(job_id)
 
         async def update_progress(progress: float) -> None:
-            await job_repo.set_progress(session, job.id, progress)
-            await session.commit()
+            # Work coroutines may run concurrently (e.g. asyncio.gather in
+            # company research), so progress writes must not share the work
+            # session: an AsyncSession is not safe for concurrent use.
+            async with session_factory() as progress_session:
+                await job_repo.set_progress(progress_session, job_id, progress)
+                await progress_session.commit()
 
-        await job_repo.set_status(session, job.id, JobStatus.RUNNING)
+        await job_repo.set_status(session, job_id, JobStatus.RUNNING)
         await session.commit()
         try:
             result = await work(session, job, update_progress)
-            await job_repo.set_result(session, job.id, result)
-            await job_repo.set_status(session, job.id, JobStatus.COMPLETED)
+            await job_repo.set_result(session, job_id, result)
+            await job_repo.set_status(session, job_id, JobStatus.COMPLETED)
             await session.commit()
         except SoftTimeLimitExceeded:
+            # A fresh session marks the failure: the work session may be in
+            # an unusable state when the task times out mid-operation.
             await session.rollback()
-            await job_repo.set_error(session, job.id, "Task timed out")
-            await job_repo.set_status(session, job.id, JobStatus.FAILED)
-            await session.commit()
+            async with session_factory() as fail_session:
+                await job_repo.set_error(fail_session, job_id, "Task timed out")
+                await job_repo.set_status(fail_session, job_id, JobStatus.FAILED)
+                await fail_session.commit()
         except Exception as exc:
             # Swallow after recording: the Job row carries the failure, so a
             # re-raise would only trigger a costly blind autoretry. Log the
             # full stack — the row keeps only the summary message.
-            logger.exception("job_failed", job_id=job.id, error=str(exc))
+            # A fresh session marks the failure: the work session may have
+            # been poisoned by whatever crashed the work function.
+            logger.exception("job_failed", job_id=job_id, error=str(exc))
             await session.rollback()
-            await job_repo.set_error(session, job.id, str(exc))
-            await job_repo.set_status(session, job.id, JobStatus.FAILED)
-            await session.commit()
+            async with session_factory() as fail_session:
+                await job_repo.set_error(fail_session, job_id, str(exc))
+                await job_repo.set_status(fail_session, job_id, JobStatus.FAILED)
+                await fail_session.commit()
 
 
 def run_job_task(job_id: str, work: WorkFn) -> None:
