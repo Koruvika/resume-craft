@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response
 
 from resumecraft.api.deps import CurrentUserDep, DbSession
+from resumecraft.api.responses import INVALID_INPUT, UNAUTHENTICATED, error, not_found
 from resumecraft.core.celery_app import celery_app
 from resumecraft.schemas.company_research import (
     CompanyResearchAcceptedResponse,
@@ -20,7 +21,20 @@ router = APIRouter(prefix="/company-research", tags=["company-research"])
 COMPANY_RESEARCH_TASK = "resumecraft.worker.tasks.company_research"
 
 
-@router.post("", response_model=CompanyResearchAcceptedResponse, status_code=202)
+@router.post(
+    "",
+    response_model=CompanyResearchAcceptedResponse,
+    status_code=202,
+    responses={
+        200: {
+            "model": CompanyResearchAcceptedResponse,
+            "description": "A matching research from the last month already exists "
+            "(and `force` is false); its job and research ids are returned",
+        },
+        401: UNAUTHENTICATED,
+        422: INVALID_INPUT,
+    },
+)
 async def start_company_research(
     request: CompanyResearchRequest, response: Response, db: DbSession, user: CurrentUserDep
 ) -> CompanyResearchAcceptedResponse:
@@ -54,7 +68,11 @@ async def start_company_research(
     )
 
 
-@router.get("", response_model=CompanyResearchListOut)
+@router.get(
+    "",
+    response_model=CompanyResearchListOut,
+    responses={401: UNAUTHENTICATED, 422: INVALID_INPUT},
+)
 async def list_company_researches(
     db: DbSession,
     user: CurrentUserDep,
@@ -76,7 +94,11 @@ async def list_company_researches(
     )
 
 
-@router.get("/{research_id}", response_model=CompanyResearchOut)
+@router.get(
+    "/{research_id}",
+    response_model=CompanyResearchOut,
+    responses={401: UNAUTHENTICATED, 404: not_found("company_research"), 422: INVALID_INPUT},
+)
 async def get_company_research(
     research_id: uuid.UUID, db: DbSession, user: CurrentUserDep
 ) -> CompanyResearchOut:
@@ -86,7 +108,21 @@ async def get_company_research(
     return CompanyResearchOut.model_validate(research)
 
 
-@router.patch("/{research_id}", response_model=CompanyResearchOut)
+@router.patch(
+    "/{research_id}",
+    response_model=CompanyResearchOut,
+    responses={
+        401: UNAUTHENTICATED,
+        404: not_found("company_research"),
+        409: error(
+            "Reports sent before the research is COMPLETED (`research_not_ready`)",
+            "research_not_ready",
+            "Company research is not ready yet",
+            {"status": "processing"},
+        ),
+        422: INVALID_INPUT,
+    },
+)
 async def update_company_research(
     research_id: uuid.UUID,
     request: CompanyResearchUpdateRequest,
@@ -102,7 +138,11 @@ async def update_company_research(
     return CompanyResearchOut.model_validate(research)
 
 
-@router.delete("/{research_id}", status_code=204)
+@router.delete(
+    "/{research_id}",
+    status_code=204,
+    responses={401: UNAUTHENTICATED, 404: not_found("company_research"), 422: INVALID_INPUT},
+)
 async def delete_company_research(
     research_id: uuid.UUID, db: DbSession, user: CurrentUserDep
 ) -> None:

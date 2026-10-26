@@ -4,6 +4,12 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, Query, Response, UploadFile
 
 from resumecraft.api.deps import CurrentUserDep, DbSession
+from resumecraft.api.responses import (
+    INVALID_INPUT,
+    UNAUTHENTICATED,
+    error,
+    not_found,
+)
 from resumecraft.core.celery_app import celery_app
 from resumecraft.rendering import DEFAULT_LOCALE, DEFAULT_THEME
 from resumecraft.schemas.resume import (
@@ -18,10 +24,21 @@ from resumecraft.services import job_service, render_service, resume_service
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
+RESUME_NOT_READY = error(
+    "The resume's parse job has not COMPLETED yet (`resume_not_ready`)",
+    "resume_not_ready",
+    "Resume is not ready yet",
+    {"status": "processing"},
+)
+
 PARSE_RESUME_TASK = "resumecraft.worker.tasks.parse_resume"
 
 
-@router.get("", response_model=ResumeListOut)
+@router.get(
+    "",
+    response_model=ResumeListOut,
+    responses={401: UNAUTHENTICATED, 422: INVALID_INPUT},
+)
 async def list_resumes(
     db: DbSession,
     user: CurrentUserDep,
@@ -42,7 +59,12 @@ async def list_resumes(
     )
 
 
-@router.post("/upload", response_model=ResumeOut, status_code=201)
+@router.post(
+    "/upload",
+    response_model=ResumeOut,
+    status_code=201,
+    responses={401: UNAUTHENTICATED, 422: INVALID_INPUT},
+)
 async def upload_resume(
     request: UploadResumeRequest, db: DbSession, user: CurrentUserDep
 ) -> ResumeOut:
@@ -54,7 +76,27 @@ async def upload_resume(
     return ResumeOut.model_validate(resume)
 
 
-@router.post("/upload-file", response_model=UploadAcceptedResponse, status_code=202)
+@router.post(
+    "/upload-file",
+    response_model=UploadAcceptedResponse,
+    status_code=202,
+    responses={
+        401: UNAUTHENTICATED,
+        413: error(
+            "The file exceeds the size limit for its type (`file_too_large`)",
+            "file_too_large",
+            "File exceeds 5242880 bytes limit",
+            {"size_bytes": 6000000, "max_bytes": 5242880},
+        ),
+        422: error(
+            "Form fields failed validation (`invalid_input`), or the file is not "
+            "JSON/PDF (`unsupported_file_type`)",
+            "unsupported_file_type",
+            "File must be one of application/json, application/pdf",
+            {"mime": "text/plain", "supported": ["application/json", "application/pdf"]},
+        ),
+    },
+)
 async def upload_resume_file(
     file: Annotated[UploadFile, File(description="A resume as a ParsedResume JSON or PDF file")],
     db: DbSession,
@@ -78,7 +120,11 @@ async def upload_resume_file(
     return UploadAcceptedResponse(job_id=job.id, resume_id=resume.id, status=resume.status)
 
 
-@router.get("/{resume_id}", response_model=ResumeOut)
+@router.get(
+    "/{resume_id}",
+    response_model=ResumeOut,
+    responses={401: UNAUTHENTICATED, 404: not_found("resume"), 422: INVALID_INPUT},
+)
 async def get_resume(resume_id: uuid.UUID, db: DbSession, user: CurrentUserDep) -> ResumeOut:
     """Return a resume with its current status — poll this after an
     asynchronous upload to know when the content is ready."""
@@ -86,7 +132,16 @@ async def get_resume(resume_id: uuid.UUID, db: DbSession, user: CurrentUserDep) 
     return ResumeOut.model_validate(resume)
 
 
-@router.patch("/{resume_id}", response_model=ResumeOut)
+@router.patch(
+    "/{resume_id}",
+    response_model=ResumeOut,
+    responses={
+        401: UNAUTHENTICATED,
+        404: not_found("resume"),
+        409: RESUME_NOT_READY,
+        422: INVALID_INPUT,
+    },
+)
 async def update_resume(
     resume_id: uuid.UUID, request: ResumeUpdateRequest, db: DbSession, user: CurrentUserDep
 ) -> ResumeOut:
@@ -96,13 +151,38 @@ async def update_resume(
     return ResumeOut.model_validate(resume)
 
 
-@router.delete("/{resume_id}", status_code=204)
+@router.delete(
+    "/{resume_id}",
+    status_code=204,
+    responses={401: UNAUTHENTICATED, 404: not_found("resume"), 422: INVALID_INPUT},
+)
 async def delete_resume(resume_id: uuid.UUID, db: DbSession, user: CurrentUserDep) -> None:
     """Soft-delete: sets deleted_at; the row disappears from all reads."""
     await resume_service.soft_delete_resume(db, user.user_id, resume_id)
 
 
-@router.get("/{resume_id}/pdf")
+@router.get(
+    "/{resume_id}/pdf",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "The rendered PDF, inline"},
+        401: UNAUTHENTICATED,
+        404: not_found("resume"),
+        409: RESUME_NOT_READY,
+        422: error(
+            "Invalid resume id (`invalid_input`), or an unknown theme/locale "
+            "(`invalid_render_option`)",
+            "invalid_render_option",
+            "Unknown theme 'fancy'",
+            {"option": "theme", "value": "fancy", "supported": ["classic", "..."]},
+        ),
+        500: error(
+            "The rendercv/typst pipeline failed (`pdf_render_failed`)",
+            "pdf_render_failed",
+            "Failed to render resume PDF",
+        ),
+    },
+)
 async def render_resume_pdf(
     resume_id: uuid.UUID,
     db: DbSession,
