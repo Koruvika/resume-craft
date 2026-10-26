@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
 from resumecraft.api.deps import CurrentUserDep, DbSession
 from resumecraft.core.celery_app import celery_app
@@ -21,12 +21,26 @@ COMPANY_RESEARCH_TASK = "resumecraft.worker.tasks.company_research"
 
 @router.post("", response_model=CompanyResearchAcceptedResponse, status_code=202)
 async def start_company_research(
-    request: CompanyResearchRequest, db: DbSession, user: CurrentUserDep
+    request: CompanyResearchRequest, response: Response, db: DbSession, user: CurrentUserDep
 ) -> CompanyResearchAcceptedResponse:
     """Start researching a company asynchronously: a PENDING research row is
     created, the company_research job runs GPTResearcher, and
-    GET /company-research/{research_id} returns the reports once ready."""
+    GET /company-research/{research_id} returns the reports once ready.
+
+    If the user already has a matching research from the last month (pending,
+    processing or completed), it is returned with 200 instead — send
+    `force: true` to research again anyway."""
     website = str(request.website) if request.website is not None else None
+    if not request.force:
+        duplicate = await company_research_service.find_duplicate_research(
+            db, user.user_id, request.company_name, website
+        )
+        if duplicate is not None:
+            existing, existing_job = duplicate
+            response.status_code = 200
+            return CompanyResearchAcceptedResponse(
+                job_id=existing_job.id, research_id=existing.id, status=existing.status
+            )
     research = await company_research_service.create_pending_research(
         db, user.user_id, request.company_name, website
     )

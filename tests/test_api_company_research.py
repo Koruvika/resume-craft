@@ -67,6 +67,43 @@ async def test_start_research_rejects_extra_fields(client) -> None:
     assert response.status_code == 422
 
 
+async def test_start_research_twice_returns_existing_research(client, db_session) -> None:
+    first = await client.post("/api/v1/company-research", json=REQUEST_BODY)
+    assert first.status_code == 202
+
+    second = await client.post(
+        "/api/v1/company-research",
+        json={"company_name": "ACME Inc.", "website": "https://www.acme.com"},
+    )
+
+    assert second.status_code == 200
+    assert second.json() == first.json()
+    researches = (await db_session.execute(select(CompanyResearch))).scalars().all()
+    assert len(researches) == 1
+
+
+async def test_start_research_with_force_skips_dedup(client, db_session) -> None:
+    first = await client.post("/api/v1/company-research", json=REQUEST_BODY)
+
+    second = await client.post("/api/v1/company-research", json={**REQUEST_BODY, "force": True})
+
+    assert second.status_code == 202
+    assert second.json()["research_id"] != first.json()["research_id"]
+    researches = (await db_session.execute(select(CompanyResearch))).scalars().all()
+    assert len(researches) == 2
+
+
+async def test_start_research_different_website_is_not_a_duplicate(client) -> None:
+    first = await client.post("/api/v1/company-research", json=REQUEST_BODY)
+
+    second = await client.post(
+        "/api/v1/company-research", json={"company_name": "Acme", "website": "https://acme.io"}
+    )
+
+    assert second.status_code == 202
+    assert second.json()["research_id"] != first.json()["research_id"]
+
+
 async def test_start_research_requires_auth(db_session) -> None:
     app = create_app()
 

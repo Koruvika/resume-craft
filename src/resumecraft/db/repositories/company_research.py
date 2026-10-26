@@ -1,8 +1,11 @@
 import uuid
+from collections.abc import Collection
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from resumecraft.core.enums import ResearchStatus
 from resumecraft.db.models import CompanyResearch
 
 
@@ -49,3 +52,25 @@ async def list_for_user(
         .offset(offset)
     )
     return list(result.scalars().all()), total
+
+
+async def list_recent_for_user(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    since: datetime,
+    statuses: Collection[ResearchStatus],
+) -> list[CompanyResearch]:
+    """Live researches created at/after `since` in the given statuses,
+    newest first."""
+    result = await session.execute(
+        select(CompanyResearch)
+        .where(
+            CompanyResearch.user_id == user_id,
+            CompanyResearch.deleted_at.is_(None),
+            CompanyResearch.created_at >= since,
+            CompanyResearch.status.in_(statuses),
+        )
+        .order_by(CompanyResearch.created_at.desc(), CompanyResearch.id.desc())
+    )
+    return list(result.scalars().all())

@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # Max research queries in flight at once; bursts of concurrent LLM calls
     # trigger server-side stalls on the LLM provider.
     research_max_concurrency: int = 2
+    # De-duplication: POST /company-research reuses the user's latest research
+    # from the last N days whose processed name has Jaro-Winkler similarity >=
+    # the threshold (and same processed website, when both sides have one).
+    research_dedup_window_days: int = 30
+    research_dedup_name_threshold: float = 0.92
 
     # LlamaCloud — PDF resume parsing (extract API).
     llama_cloud_api_key: SecretStr | None = None
