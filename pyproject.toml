@@ -27,6 +27,7 @@ dependencies = [
     "rendercv>=2.8",
     "rendercv-fonts>=0.5.1",
     "typst>=0.14.9",
+    "rapidfuzz>=3.14",
 ]
 
 [dependency-groups]

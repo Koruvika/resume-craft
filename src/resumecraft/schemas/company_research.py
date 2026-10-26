@@ -9,12 +9,16 @@ from resumecraft.core.enums import ResearchStatus
 class CompanyResearchRequest(BaseModel):
     """Request body for POST /company-research: research a company through
     its name and (optionally) its website. The website, when given, seeds the
-    GPTResearcher source URLs (homepage + common subpages)."""
+    GPTResearcher source URLs (homepage + common subpages).
+
+    A matching research of the user's from the last month is returned instead
+    of starting a new one, unless `force` is set."""
 
     model_config = ConfigDict(extra="forbid")
 
     company_name: str = Field(min_length=1, max_length=255)
     website: HttpUrl | None = None
+    force: bool = False
 
 
 class CompanyResearchJobInput(BaseModel):
@@ -28,8 +32,8 @@ class CompanyResearchJobInput(BaseModel):
 
 
 class CompanyResearchAcceptedResponse(BaseModel):
-    """Accepted research: poll GET /jobs/{job_id} for the job status or
-    GET /company-research/{research_id} for the reports."""
+    """Accepted (or de-duplicated) research: poll GET /jobs/{job_id} for the
+    job status or GET /company-research/{research_id} for the reports."""
 
     job_id: uuid.UUID
     research_id: uuid.UUID

@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from resumecraft.core.enums import JobStatus
+from resumecraft.core.enums import JobStatus, JobType
 from resumecraft.db.models import Job
 
 
@@ -23,6 +23,23 @@ async def get_by_id_for_user(
     session: AsyncSession, job_id: uuid.UUID, user_id: uuid.UUID
 ) -> Job | None:
     result = await session.execute(select(Job).where(Job.id == job_id, Job.user_id == user_id))
+    return result.scalar_one_or_none()
+
+
+async def get_latest_for_research(
+    session: AsyncSession, research_id: uuid.UUID, user_id: uuid.UUID
+) -> Job | None:
+    """Newest company_research job whose input points at `research_id`."""
+    result = await session.execute(
+        select(Job)
+        .where(
+            Job.user_id == user_id,
+            Job.type == JobType.COMPANY_RESEARCH,
+            Job.input["research_id"].as_string() == str(research_id),
+        )
+        .order_by(Job.created_at.desc())
+        .limit(1)
+    )
     return result.scalar_one_or_none()
 
 
