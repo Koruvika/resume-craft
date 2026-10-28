@@ -9,7 +9,7 @@ from sqlalchemy import select
 from conftest import TEST_USER_ID
 from resumecraft.core.enums import ResumeStatus
 from resumecraft.db.models import Resume
-from resumecraft.db.repositories import job as job_repo
+from resumecraft.db.repositories import task as task_repo
 from resumecraft.db.session import get_session
 from resumecraft.main import create_app
 from resumecraft.services import resume_service
@@ -98,12 +98,12 @@ async def test_upload_file_accepts_json_asynchronously(client, db_session) -> No
     assert resume.status.value == "pending"
     assert resume.content is None
 
-    job = await job_repo.get_by_id(db_session, uuid.UUID(body["job_id"]))
-    assert job is not None
-    assert job.celery_task_id == "fake-task-id"
-    assert job.input["resume_id"] == str(resume.id)
-    assert job.input["source_type"] == "json"
-    assert job.input["file_b64"]
+    task = await task_repo.get_by_id(db_session, uuid.UUID(body["task_id"]))
+    assert task is not None
+    assert task.celery_task_id == "fake-task-id"
+    assert task.input["resume_id"] == str(resume.id)
+    assert task.input["source_type"] == "json"
+    assert task.input["file_b64"]
 
 
 async def test_upload_file_accepts_pdf_asynchronously(client, db_session) -> None:
@@ -117,10 +117,10 @@ async def test_upload_file_accepts_pdf_asynchronously(client, db_session) -> Non
     resume = (await db_session.execute(select(Resume))).scalars().one()
     assert resume.content is None
     assert resume.title == "resume"
-    job = await job_repo.get_by_id(db_session, uuid.UUID(body["job_id"]))
-    assert job is not None
-    assert job.input["source_type"] == "pdf"
-    assert job.input["filename"] == "resume.pdf"
+    task = await task_repo.get_by_id(db_session, uuid.UUID(body["task_id"]))
+    assert task is not None
+    assert task.input["source_type"] == "pdf"
+    assert task.input["filename"] == "resume.pdf"
 
 
 async def test_upload_file_accepts_custom_title(client, db_session) -> None:

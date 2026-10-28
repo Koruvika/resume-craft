@@ -11,7 +11,7 @@ async def test_migrations_applied() -> None:
     engine = create_async_engine(get_settings().database_url)
     try:
         async with engine.connect() as conn:
-            for table_name in ("jobs", "resumes", "company_researches"):
+            for table_name in ("tasks", "resumes", "companies"):
                 result = await conn.execute(text(f"select count(*) from {table_name}"))  # noqa: S608
                 assert result.scalar() == 0
     finally:
@@ -19,13 +19,13 @@ async def test_migrations_applied() -> None:
 
 
 @pytest.mark.db
-async def test_job_type_enum_has_all_values() -> None:
-    """The native job_type enum must cover every JobType member (0004, 0006)."""
+async def test_task_type_enum_has_all_values() -> None:
+    """The native task_type enum must cover every TaskType member (0004, 0006, 0007)."""
     engine = create_async_engine(get_settings().database_url)
     try:
         async with engine.connect() as conn:
-            result = await conn.execute(text("select enum_range(null::job_type)"))
+            result = await conn.execute(text("select enum_range(null::task_type)"))
             values = set(result.scalar())
-            assert values == {"GENERATE_RESUME", "PARSE_RESUME", "COMPANY_RESEARCH"}
+            assert values == {"GENERATE_RESUME", "PARSE_RESUME", "RESEARCH_COMPANY"}
     finally:
         await engine.dispose()

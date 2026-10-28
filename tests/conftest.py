@@ -53,11 +53,11 @@ async def client(db_session, monkeypatch) -> httpx.AsyncClient:
 
     def fake_send_task(name, args=None, kwargs=None, **_):
         assert name.startswith("resumecraft.worker.tasks.")
-        assert kwargs is not None and "job_id" in kwargs
+        assert kwargs is not None and "task_id" in kwargs
         return SimpleNamespace(id="fake-task-id")
 
     monkeypatch.setattr("resumecraft.api.v1.resumes.celery_app.send_task", fake_send_task)
-    monkeypatch.setattr("resumecraft.api.v1.company_research.celery_app.send_task", fake_send_task)
+    monkeypatch.setattr("resumecraft.api.v1.companies.celery_app.send_task", fake_send_task)
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

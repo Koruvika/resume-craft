@@ -3,15 +3,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from resumecraft.core.enums import JobStatus, JobType
+from resumecraft.core.enums import TaskStatus, TaskType
 
 
-class JobResponse(BaseModel):
+class TaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    type: JobType
-    status: JobStatus
+    type: TaskType
+    status: TaskStatus
     progress: float
     result: dict | None
     error: str | None

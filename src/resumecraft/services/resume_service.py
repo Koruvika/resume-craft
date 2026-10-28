@@ -18,10 +18,10 @@ from resumecraft.core.exceptions import (
     ResumeNotReadyError,
     UnsupportedFileTypeError,
 )
-from resumecraft.db.models import Job, Resume
+from resumecraft.db.models import Resume, Task
 from resumecraft.db.repositories import resume as resume_repo
 from resumecraft.schemas.parsed_resume import ParsedResume
-from resumecraft.schemas.resume import ParseUploadJobInput, ResumeUpdateRequest
+from resumecraft.schemas.resume import ParseUploadTaskInput, ResumeUpdateRequest
 
 ProgressFn = Callable[[float], Awaitable[None]]
 
@@ -138,7 +138,7 @@ async def create_pending_import(
     title: str | None = None,
 ) -> Resume:
     """Create a PENDING resume shell for an uploaded file — the parse_resume
-    job fills in content and flips the status."""
+    task fills in content and flips the status."""
     max_bytes = _max_bytes_for(source_type)
     if len(raw) > max_bytes:
         raise FileTooLargeError(
@@ -158,7 +158,7 @@ async def create_pending_import(
     return resume
 
 
-def build_parse_job_input(
+def build_parse_task_input(
     resume: Resume,
     *,
     source_type: Literal["json", "pdf"],
@@ -166,7 +166,7 @@ def build_parse_job_input(
     filename: str | None,
     title: str | None,
 ) -> dict[str, Any]:
-    return ParseUploadJobInput(
+    return ParseUploadTaskInput(
         resume_id=resume.id,
         source_type=source_type,
         file_b64=base64.b64encode(raw).decode(),
@@ -176,13 +176,13 @@ def build_parse_job_input(
 
 
 async def parse_upload(
-    session: AsyncSession, job: Job, update_progress: ProgressFn
+    session: AsyncSession, task: Task, update_progress: ProgressFn
 ) -> dict[str, Any]:
     """Work fn for the parse_resume task: parse the uploaded file and complete
     the resume. Failures are committed onto the resume before re-raising so
-    the runner still marks the job FAILED."""
-    request = ParseUploadJobInput.model_validate(job.input)
-    resume = await resume_repo.get_by_id_for_user(session, request.resume_id, job.user_id)
+    the runner still marks the task FAILED."""
+    request = ParseUploadTaskInput.model_validate(task.input)
+    resume = await resume_repo.get_by_id_for_user(session, request.resume_id, task.user_id)
     if resume is None:
         raise NotFoundError("resume", request.resume_id)
 

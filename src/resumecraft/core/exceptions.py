@@ -25,7 +25,7 @@ __all__ = [
     "NotFoundError",
     "PdfRenderError",
     "PermissionDeniedError",
-    "ResearchNotReadyError",
+    "CompanyNotReadyError",
     "ResumeCraftError",
     "ResumeNotReadyError",
     "UnsupportedFileTypeError",
@@ -87,7 +87,7 @@ class PermissionDeniedError(ResumeCraftError):
 
 
 class NotFoundError(ResumeCraftError):
-    """Raised with the resource name so the code reads `job_not_found`, `user_not_found`."""
+    """Raised with the resource name so the code reads `task_not_found`, `user_not_found`."""
 
     code = "not_found"
     status_code = HTTPStatus.NOT_FOUND
@@ -123,7 +123,7 @@ class EmailAlreadyRegisteredError(ConflictError):
 
 
 class ResumeNotReadyError(ConflictError):
-    """Render requested for a resume whose parse job has not completed."""
+    """Render requested for a resume whose parse task has not completed."""
 
     code = "resume_not_ready"
     status_code = HTTPStatus.CONFLICT
@@ -133,10 +133,10 @@ class ResumeNotReadyError(ConflictError):
         super().__init__(message=message, details={"status": status})
 
 
-class ResearchNotReadyError(ConflictError):
-    """Reports edit requested for a research whose job has not completed."""
+class CompanyNotReadyError(ConflictError):
+    """Reports edit requested for a company whose research task has not completed."""
 
-    code = "research_not_ready"
+    code = "company_not_ready"
     status_code = HTTPStatus.CONFLICT
     default_message = "Company research is not ready yet"
 

@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class JobStatus(StrEnum):
+class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -9,10 +9,10 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
-class JobType(StrEnum):
+class TaskType(StrEnum):
     GENERATE_RESUME = "generate_resume"
     PARSE_RESUME = "parse_resume"
-    COMPANY_RESEARCH = "company_research"
+    RESEARCH_COMPANY = "research_company"
 
 
 class ResumeStatus(StrEnum):
@@ -22,7 +22,7 @@ class ResumeStatus(StrEnum):
     FAILED = "failed"
 
 
-class ResearchStatus(StrEnum):
+class CompanyStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"

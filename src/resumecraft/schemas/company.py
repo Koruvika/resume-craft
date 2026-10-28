@@ -4,11 +4,11 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
-from resumecraft.core.enums import ResearchStatus
+from resumecraft.core.enums import CompanyStatus
 
 
-class CompanyResearchRequest(BaseModel):
-    """Request body for POST /company-research: research a company through
+class CompanyCreateRequest(BaseModel):
+    """Request body for POST /companies: research a company through
     its name and (optionally) its website. The website, when given, seeds the
     GPTResearcher source URLs (homepage + common subpages).
 
@@ -22,23 +22,23 @@ class CompanyResearchRequest(BaseModel):
     force: bool = False
 
 
-class CompanyResearchJobInput(BaseModel):
-    """Job.input payload for the company_research task."""
+class ResearchCompanyTaskInput(BaseModel):
+    """Task.input payload for the research_company task."""
 
     model_config = ConfigDict(extra="forbid")
 
-    research_id: uuid.UUID
+    company_id: uuid.UUID
     company_name: str = Field(min_length=1, max_length=255)
     website: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
-class CompanyResearchAcceptedResponse(BaseModel):
-    """Accepted (or de-duplicated) research: poll GET /jobs/{job_id} for the
-    job status or GET /company-research/{research_id} for the reports."""
+class CompanyAcceptedResponse(BaseModel):
+    """Accepted (or de-duplicated) research: poll GET /tasks/{task_id} for the
+    task status or GET /companies/{company_id} for the reports."""
 
-    job_id: uuid.UUID
-    research_id: uuid.UUID
-    status: ResearchStatus
+    task_id: uuid.UUID
+    company_id: uuid.UUID
+    status: CompanyStatus
 
 
 class ResearchReportOut(BaseModel):
@@ -50,13 +50,13 @@ class ResearchReportOut(BaseModel):
     report: str
 
 
-class CompanyResearchUpdateRequest(BaseModel):
+class CompanyUpdateRequest(BaseModel):
     """Partial update: at least one field must be provided. Omitted fields are
     left alone; `website: null` clears the website.
 
     Renaming does not re-run the research. Reports may only be replaced on a
-    COMPLETED research (409 research_not_ready otherwise) so a client can't
-    race an in-flight company_research job.
+    COMPLETED research (409 company_not_ready otherwise) so a client can't
+    race an in-flight research_company task.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -76,7 +76,7 @@ class CompanyResearchUpdateRequest(BaseModel):
         return self
 
 
-class CompanyResearchOut(BaseModel):
+class CompanyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -84,15 +84,15 @@ class CompanyResearchOut(BaseModel):
     website: str | None = None
     # Null until status is COMPLETED.
     reports: list[ResearchReportOut] | None = None
-    status: ResearchStatus
+    status: CompanyStatus
     error: str | None = None
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
 
 
-class CompanyResearchSummaryOut(BaseModel):
-    """List row: everything needed to browse past researches without the
+class CompanySummaryOut(BaseModel):
+    """List row: everything needed to browse past companies without the
     heavy reports."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -100,14 +100,14 @@ class CompanyResearchSummaryOut(BaseModel):
     id: uuid.UUID
     company_name: str
     website: str | None = None
-    status: ResearchStatus
+    status: CompanyStatus
     error: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
-class CompanyResearchListOut(BaseModel):
-    items: list[CompanyResearchSummaryOut]
+class CompanyListOut(BaseModel):
+    items: list[CompanySummaryOut]
     total: int
     limit: int
     offset: int

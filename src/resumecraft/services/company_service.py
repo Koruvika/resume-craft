@@ -10,14 +10,14 @@ from rapidfuzz.distance import JaroWinkler
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from resumecraft.core.config import get_settings
-from resumecraft.core.enums import ResearchStatus
-from resumecraft.core.exceptions import NotFoundError, ResearchNotReadyError
-from resumecraft.db.models import CompanyResearch, Job
-from resumecraft.db.repositories import company_research as research_repo
-from resumecraft.db.repositories import job as job_repo
-from resumecraft.schemas.company_research import (
-    CompanyResearchJobInput,
-    CompanyResearchUpdateRequest,
+from resumecraft.core.enums import CompanyStatus
+from resumecraft.core.exceptions import CompanyNotReadyError, NotFoundError
+from resumecraft.db.models import Company, Task
+from resumecraft.db.repositories import company as company_repo
+from resumecraft.db.repositories import task as task_repo
+from resumecraft.schemas.company import (
+    CompanyUpdateRequest,
+    ResearchCompanyTaskInput,
 )
 
 ProgressFn = Callable[[float], Awaitable[None]]
@@ -32,7 +32,7 @@ _LEGAL_SUFFIXES = frozenset(
     }
 )  # fmt: skip
 # Statuses a new request can reuse: done, or still running. FAILED never counts.
-_DEDUP_STATUSES = (ResearchStatus.PENDING, ResearchStatus.PROCESSING, ResearchStatus.COMPLETED)
+_DEDUP_STATUSES = (CompanyStatus.PENDING, CompanyStatus.PROCESSING, CompanyStatus.COMPLETED)
 
 
 def normalize_company_name(name: str) -> str:
@@ -60,45 +60,45 @@ def normalize_website(website: str | None) -> str | None:
     return host.removeprefix("www.")
 
 
-async def create_pending_research(
+async def create_pending_company(
     session: AsyncSession,
     user_id: UUID,
     company_name: str,
     website: str | None,
-) -> CompanyResearch:
-    """Create a PENDING research shell — the company_research job fills in
+) -> Company:
+    """Create a PENDING research shell — the research_company task fills in
     reports and flips the status."""
-    research = CompanyResearch(
+    company = Company(
         user_id=user_id,
         company_name=company_name,
         website=website,
         reports=None,
-        status=ResearchStatus.PENDING,
+        status=CompanyStatus.PENDING,
     )
-    await research_repo.create(session, research)
+    await company_repo.create(session, company)
     await session.commit()
-    return research
+    return company
 
 
-async def find_duplicate_research(
+async def find_duplicate_company(
     session: AsyncSession,
     user_id: UUID,
     company_name: str,
     website: str | None,
-) -> tuple[CompanyResearch, Job] | None:
+) -> tuple[Company, Task] | None:
     """The user's latest non-failed research from the de-dup window that
-    matches this request, with the job that produced it.
+    matches this request, with the task that produced it.
 
     A match needs Jaro-Winkler similarity >= the configured threshold on the
     processed names AND, when both sides have a website, equal processed
-    websites. Rows without a job are skipped (there is no handle to return).
+    websites. Rows without a task are skipped (there is no handle to return).
     """
     settings = get_settings()
     since = datetime.now(UTC) - timedelta(days=settings.research_dedup_window_days)
     name_key = normalize_company_name(company_name)
     website_key = normalize_website(website)
 
-    candidates = await research_repo.list_recent_for_user(
+    candidates = await company_repo.list_recent_for_user(
         session, user_id, since=since, statuses=_DEDUP_STATUSES
     )
     for candidate in candidates:
@@ -110,54 +110,52 @@ async def find_duplicate_research(
         candidate_website_key = normalize_website(candidate.website)
         if website_key and candidate_website_key and website_key != candidate_website_key:
             continue
-        job = await job_repo.get_latest_for_research(session, candidate.id, user_id)
-        if job is not None:
-            return candidate, job
+        task = await task_repo.get_latest_for_company(session, candidate.id, user_id)
+        if task is not None:
+            return candidate, task
     return None
 
 
-def build_research_job_input(research: CompanyResearch) -> dict[str, Any]:
-    return CompanyResearchJobInput(
-        research_id=research.id,
-        company_name=research.company_name,
-        website=research.website,
+def build_research_task_input(company: Company) -> dict[str, Any]:
+    return ResearchCompanyTaskInput(
+        company_id=company.id,
+        company_name=company.company_name,
+        website=company.website,
     ).model_dump(mode="json")
 
 
-async def get_research_for_user(
-    session: AsyncSession, research_id: UUID, user_id: UUID
-) -> CompanyResearch:
-    research = await research_repo.get_by_id_for_user(session, research_id, user_id)
-    if research is None:
-        raise NotFoundError("company_research", research_id)
-    return research
+async def get_company_for_user(session: AsyncSession, company_id: UUID, user_id: UUID) -> Company:
+    company = await company_repo.get_by_id_for_user(session, company_id, user_id)
+    if company is None:
+        raise NotFoundError("company", company_id)
+    return company
 
 
-async def list_researches(
+async def list_companies(
     session: AsyncSession,
     user_id: UUID,
     *,
     limit: int,
     offset: int,
     search: str | None = None,
-) -> tuple[list[CompanyResearch], int]:
-    return await research_repo.list_for_user(
+) -> tuple[list[Company], int]:
+    return await company_repo.list_for_user(
         session, user_id, limit=limit, offset=offset, search=search
     )
 
 
 async def run_research(
-    session: AsyncSession, job: Job, update_progress: ProgressFn
+    session: AsyncSession, task: Task, update_progress: ProgressFn
 ) -> dict[str, Any]:
-    """Work fn for the company_research task: run GPTResearcher against the
+    """Work fn for the research_company task: run GPTResearcher against the
     company and complete the research row. Failures are committed onto the
-    row before re-raising so the runner still marks the job FAILED."""
-    request = CompanyResearchJobInput.model_validate(job.input)
-    research = await research_repo.get_by_id_for_user(session, request.research_id, job.user_id)
-    if research is None:
-        raise NotFoundError("company_research", request.research_id)
+    row before re-raising so the runner still marks the task FAILED."""
+    request = ResearchCompanyTaskInput.model_validate(task.input)
+    company = await company_repo.get_by_id_for_user(session, request.company_id, task.user_id)
+    if company is None:
+        raise NotFoundError("company", request.company_id)
 
-    research.status = ResearchStatus.PROCESSING
+    company.status = CompanyStatus.PROCESSING
     await session.commit()
     await update_progress(0.1)
 
@@ -172,42 +170,42 @@ async def run_research(
             ),
         )
     except Exception as exc:
-        research.status = ResearchStatus.FAILED
-        research.error = str(exc)
+        company.status = CompanyStatus.FAILED
+        company.error = str(exc)
         await session.commit()
         raise
 
-    research.reports = reports
-    research.status = ResearchStatus.COMPLETED
-    research.error = None
+    company.reports = reports
+    company.status = CompanyStatus.COMPLETED
+    company.error = None
     await session.commit()
     await update_progress(1.0)
-    return {"research_id": str(research.id)}
+    return {"company_id": str(company.id)}
 
 
-async def update_research(
+async def update_company(
     session: AsyncSession,
     user_id: UUID,
-    research_id: UUID,
-    request: CompanyResearchUpdateRequest,
-) -> CompanyResearch:
-    research = await get_research_for_user(session, research_id, user_id)
+    company_id: UUID,
+    request: CompanyUpdateRequest,
+) -> Company:
+    company = await get_company_for_user(session, company_id, user_id)
     fields = request.model_fields_set
     if "reports" in fields and request.reports is not None:
-        if research.status != ResearchStatus.COMPLETED:
-            raise ResearchNotReadyError(research.status)
-        research.reports = [r.model_dump() for r in request.reports]
+        if company.status != CompanyStatus.COMPLETED:
+            raise CompanyNotReadyError(company.status)
+        company.reports = [r.model_dump() for r in request.reports]
     if "company_name" in fields and request.company_name is not None:
-        research.company_name = request.company_name
+        company.company_name = request.company_name
     if "website" in fields:
-        research.website = str(request.website) if request.website is not None else None
+        company.website = str(request.website) if request.website is not None else None
     await session.commit()
     # updated_at is server-generated (onupdate); reload it for the response.
-    await session.refresh(research)
-    return research
+    await session.refresh(company)
+    return company
 
 
-async def soft_delete_research(session: AsyncSession, user_id: UUID, research_id: UUID) -> None:
-    research = await get_research_for_user(session, research_id, user_id)
-    research.deleted_at = datetime.now(UTC)
+async def soft_delete_company(session: AsyncSession, user_id: UUID, company_id: UUID) -> None:
+    company = await get_company_for_user(session, company_id, user_id)
+    company.deleted_at = datetime.now(UTC)
     await session.commit()

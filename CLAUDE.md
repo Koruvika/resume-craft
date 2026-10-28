@@ -69,7 +69,7 @@ HTTP in exactly one place. Every error response has one shape:
 
 - `core/exceptions.py` — framework-free hierarchy (`ResumeCraftError` base with
   `code`/`status_code`/`message`/`details`, subclasses per condition, e.g.
-  `NotFoundError("job", id)` → 404 `job_not_found`). Services and the worker
+  `NotFoundError("task", id)` → 404 `task_not_found`). Services and the worker
   raise these; they must not import FastAPI. `code` is a frozen client-facing
   contract — never rename one.
 - `api/errors.py` — `register_exception_handlers` maps the hierarchy, FastAPI's
@@ -83,7 +83,7 @@ HTTP in exactly one place. Every error response has one shape:
 ## Celery conventions
 
 - Tasks are thin shells over services, wrapped in
-  `worker/tasks/_runner.py::run_job_task` (fresh engine per task, Job status
+  `worker/tasks/_runner.py::run_task` (fresh engine per task, Task row status
   lifecycle PENDING → RUNNING → COMPLETED/FAILED, progress callbacks,
   SoftTimeLimitExceeded recorded as timeout).
 - Task names are a **frozen contract**: `resumecraft.worker.tasks.<x>`. Never
@@ -92,9 +92,9 @@ HTTP in exactly one place. Every error response has one shape:
 - Every task must be re-exported from `worker/tasks/__init__.py` or Celery
   won't register it.
 - The API enqueues via `celery_app.send_task(<name>)` and stores the returned
-  id on `Job.celery_task_id`.
-- New job type: add `JobType` member → schema → service → task (via
-  `run_job_task`) → endpoint.
+  id on `Task.celery_task_id`.
+- New task type: add `TaskType` member → schema → service → task (via
+  `run_task`) → endpoint.
 
 ## Schema changes
 
