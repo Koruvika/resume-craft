@@ -1,6 +1,6 @@
 """LlamaCloud PDF resume parser — ported from resumebloom's
 `app.components.parser.Parser` (extract v2, agentic tier), minus the
-component scaffolding: this raises on failure and the job runner records it."""
+component scaffolding: this raises on failure and the task runner records it."""
 
 import asyncio
 import io

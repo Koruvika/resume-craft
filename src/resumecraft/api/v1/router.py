@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 
-from resumecraft.api.v1 import auth, company_research, health, jobs, resumes
+from resumecraft.api.v1 import auth, companies, health, resumes, tasks
 
 router = APIRouter()
 router.include_router(auth.router)
-router.include_router(company_research.router)
+router.include_router(companies.router)
 router.include_router(health.router)
-router.include_router(jobs.router)
+router.include_router(tasks.router)
 router.include_router(resumes.router)

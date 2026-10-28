@@ -10,22 +10,22 @@
 
 Project resumecraft {
   database_type: 'PostgreSQL'
-  Note: 'AI resume crafting: users own jobs (background work tracked via Celery) and the resumes those jobs produce.'
+  Note: 'AI resume crafting: users own tasks (background work tracked via Celery) and the resumes those tasks produce.'
 }
 
 // ---------------------------------------------------------------------------- enums
 
-// Which background job to run. Values are frozen strings shared with the Celery task
+// Which background task to run. Values are frozen strings shared with the Celery task
 // names — see worker/tasks/ for the mapping.
-enum job_type {
+enum task_type {
   generate_resume
   parse_resume
-  company_research
+  research_company
 }
 
-// Job lifecycle, owned by worker/tasks/_runner.py: PENDING -> RUNNING ->
+// Task lifecycle, owned by worker/tasks/_runner.py: PENDING -> RUNNING ->
 // COMPLETED/FAILED (timeout is recorded as FAILED with a distinct error message).
-enum job_status {
+enum task_status {
   pending
   running
   completed
@@ -34,7 +34,7 @@ enum job_status {
 }
 
 // Resume lifecycle for uploaded files (upload-file flow): PENDING at upload,
-// PROCESSING while the parse_resume job runs, then COMPLETED or FAILED.
+// PROCESSING while the parse_resume task runs, then COMPLETED or FAILED.
 enum enum_resumestatus {
   pending
   processing
@@ -42,9 +42,9 @@ enum enum_resumestatus {
   failed
 }
 
-// Company-research lifecycle: PENDING at enqueue, PROCESSING while the
-// company_research job runs GPTResearcher, then COMPLETED or FAILED.
-enum research_status {
+// Company research lifecycle: PENDING at enqueue, PROCESSING while the
+// research_company task runs GPTResearcher, then COMPLETED or FAILED.
+enum company_status {
   pending
   processing
   completed
@@ -71,12 +71,12 @@ Table users {
   }
 }
 
-Table jobs {
+Table tasks {
   id uuid [pk]
   // Logical ownership; deliberately no FK constraint — see the Refs note below.
   user_id uuid [not null]
-  type job_type [not null]
-  status job_status [not null, default: `pending`]
+  type task_type [not null]
+  status task_status [not null, default: `pending`]
   // 0.0 -> 1.0, written by worker progress callbacks.
   progress float [not null, default: 0]
   input jsonb [not null, note: 'Request payload the task parses (GenerateResumeRequest for generate_resume)']
@@ -97,8 +97,8 @@ Table resumes {
   id uuid [pk]
   user_id uuid [not null]
   title text [not null]
-  content jsonb [note: 'ParsedResume payload; NULL while a parse job is still running']
-  status enum_resumestatus [not null, default: `COMPLETED`, note: 'pending → processing → completed/failed (parse job lifecycle)']
+  content jsonb [note: 'ParsedResume payload; NULL while a parse task is still running']
+  status enum_resumestatus [not null, default: `COMPLETED`, note: 'pending → processing → completed/failed (parse task lifecycle)']
   error text [note: 'Failure reason when status = FAILED']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
@@ -109,13 +109,13 @@ Table resumes {
   }
 }
 
-Table company_researches {
+Table companies {
   id uuid [pk]
   user_id uuid [not null]
   company_name text [not null]
   website text [note: 'Optional seed URL for GPTResearcher sources (homepage + common subpages)']
   reports jsonb [note: 'Null until COMPLETED: [{slug, query, report}] per GPTResearcher query']
-  status research_status [not null, default: `pending`, note: 'pending → processing → completed/failed (company_research job lifecycle)']
+  status company_status [not null, default: `pending`, note: 'pending → processing → completed/failed (research_company task lifecycle)']
   error text [note: 'Failure reason when status = FAILED']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
@@ -133,6 +133,6 @@ Table company_researches {
 // These are logical ownership only: no FK constraints are enforced in SQL (models and
 // migrations create none), so the diagram shows how rows group per user without
 // promising cascade behavior.
-Ref: users.id - jobs.user_id
+Ref: users.id - tasks.user_id
 Ref: users.id - resumes.user_id
-Ref: users.id - company_researches.user_id
+Ref: users.id - companies.user_id

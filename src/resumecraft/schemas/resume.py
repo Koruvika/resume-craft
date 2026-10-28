@@ -10,8 +10,8 @@ from resumecraft.schemas.parsed_resume import ParsedResume
 
 class UploadResumeRequest(BaseModel):
     """Import an already-structured resume: validated as ParsedResume and stored
-    synchronously (no LLM, no job). Raw file uploads (JSON/PDF) go through
-    POST /resumes/upload-file and the parse_resume job instead.
+    synchronously (no LLM, no task). Raw file uploads (JSON/PDF) go through
+    POST /resumes/upload-file and the parse_resume task instead.
     """
 
     resume_json: ParsedResume
@@ -19,8 +19,8 @@ class UploadResumeRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
 
 
-class ParseUploadJobInput(BaseModel):
-    """Job.input payload for the parse_resume task."""
+class ParseUploadTaskInput(BaseModel):
+    """Task.input payload for the parse_resume task."""
 
     model_config = {"extra": "forbid"}
 
@@ -34,7 +34,7 @@ class ParseUploadJobInput(BaseModel):
 class UploadAcceptedResponse(BaseModel):
     """Accepted upload: poll GET /resumes/{resume_id} for the resume status."""
 
-    job_id: uuid.UUID
+    task_id: uuid.UUID
     resume_id: uuid.UUID
     status: ResumeStatus
 
@@ -78,7 +78,7 @@ class ResumeUpdateRequest(BaseModel):
     """Partial update: at least one of title/content must be provided.
 
     Content may only be replaced on a COMPLETED resume (409 resume_not_ready
-    otherwise) so a client can't race an in-flight parse job.
+    otherwise) so a client can't race an in-flight parse task.
     """
 
     model_config = {"extra": "forbid"}

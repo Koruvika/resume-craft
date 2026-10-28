@@ -4,12 +4,12 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy import Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from resumecraft.core.enums import ResearchStatus
+from resumecraft.core.enums import CompanyStatus
 from resumecraft.db.base import Base, JSONVariant, TimestampMixin
 
 
-class CompanyResearch(Base, TimestampMixin):
-    __tablename__ = "company_researches"
+class Company(Base, TimestampMixin):
+    __tablename__ = "companies"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
@@ -20,9 +20,9 @@ class CompanyResearch(Base, TimestampMixin):
     # Null until status is COMPLETED: [{slug, query, report}] per GPTResearcher
     # query, in QUERY_SLUGS order.
     reports: Mapped[list | None] = mapped_column(JSONVariant, nullable=True)
-    status: Mapped[ResearchStatus] = mapped_column(
-        SAEnum(ResearchStatus, name="research_status"),
+    status: Mapped[CompanyStatus] = mapped_column(
+        SAEnum(CompanyStatus, name="company_status"),
         nullable=False,
-        default=ResearchStatus.PENDING,
+        default=CompanyStatus.PENDING,
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

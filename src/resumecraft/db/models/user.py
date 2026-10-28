@@ -18,6 +18,6 @@ class User(Base, TimestampMixin):
     # Self-describing (`$2b$12$...`), so the work factor can be raised without a
     # migration — `needs_rehash` replaces the old hash at the next successful login.
     password: Mapped[str] = mapped_column(String(255), nullable=False)
-    # Deactivation rather than deletion: users own jobs/resumes that must not
+    # Deactivation rather than deletion: users own tasks/resumes that must not
     # cascade away.
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

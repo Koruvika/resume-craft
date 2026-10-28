@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     llm_model: str = "gpt-4o-mini"
 
-    # GPTResearcher — company research jobs. Web search retriever: tavily when
+    # GPTResearcher — company research tasks. Web search retriever: tavily when
     # a key is set, else the free duckduckgo fallback. The embedding string is
     # gpt-researcher's '<provider>:<model>' form and must point at an
     # embeddings-capable endpoint.
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Max research queries in flight at once; bursts of concurrent LLM calls
     # trigger server-side stalls on the LLM provider.
     research_max_concurrency: int = 2
-    # De-duplication: POST /company-research reuses the user's latest research
+    # De-duplication: POST /companies reuses the user's latest research
     # from the last N days whose processed name has Jaro-Winkler similarity >=
     # the threshold (and same processed website, when both sides have one).
     research_dedup_window_days: int = 30

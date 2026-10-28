@@ -1,9 +1,9 @@
-from resumecraft.db.models import Job, Resume
+from resumecraft.db.models import Resume, Task
 
 
-def test_job_table_columns() -> None:
-    table = Job.__table__
-    assert table.name == "jobs"
+def test_task_table_columns() -> None:
+    table = Task.__table__
+    assert table.name == "tasks"
     expected = {
         "id",
         "user_id",

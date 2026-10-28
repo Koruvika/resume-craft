@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from resumecraft.core.enums import JobType, ResumeStatus
+from resumecraft.core.enums import ResumeStatus, TaskType
 from resumecraft.core.exceptions import (
     FileTooLargeError,
     InvalidResumeFileError,
@@ -13,7 +13,7 @@ from resumecraft.core.exceptions import (
     ResumeNotReadyError,
     UnsupportedFileTypeError,
 )
-from resumecraft.db.models import Job, Resume
+from resumecraft.db.models import Resume, Task
 from resumecraft.db.repositories import resume as resume_repo
 from resumecraft.schemas.parsed_resume import ContactInfo, ParsedResume
 from resumecraft.schemas.resume import ResumeUpdateRequest
@@ -90,7 +90,7 @@ FILE_BYTES = json.dumps(
 ).encode()
 
 
-async def _make_parse_job(
+async def _make_parse_task(
     session,
     *,
     user_id: uuid.UUID,
@@ -99,10 +99,10 @@ async def _make_parse_job(
     file_bytes: bytes | None = None,
     filename: str = "resume.json",
     title: str | None = None,
-) -> Job:
-    job = Job(
+) -> Task:
+    task = Task(
         user_id=user_id,
-        type=JobType.PARSE_RESUME,
+        type=TaskType.PARSE_RESUME,
         input={
             "resume_id": str(resume_id),
             "source_type": source_type,
@@ -111,9 +111,9 @@ async def _make_parse_job(
             "title": title,
         },
     )
-    session.add(job)
+    session.add(task)
     await session.flush()
-    return job
+    return task
 
 
 async def test_create_pending_import_stores_shell(db_session) -> None:
@@ -172,10 +172,10 @@ async def test_parse_upload_json_completes_resume(db_session) -> None:
     resume = await resume_service.create_pending_import(
         db_session, user_id, source_type="json", raw=FILE_BYTES, filename="resume.json"
     )
-    job = await _make_parse_job(db_session, user_id=user_id, resume_id=resume.id)
+    task = await _make_parse_task(db_session, user_id=user_id, resume_id=resume.id)
     calls, update_progress = await _progress_spy()
 
-    result = await resume_service.parse_upload(db_session, job, update_progress)
+    result = await resume_service.parse_upload(db_session, task, update_progress)
 
     stored = await db_session.get(Resume, resume.id)
     assert stored is not None
@@ -198,9 +198,9 @@ async def test_parse_upload_json_keeps_custom_title(db_session) -> None:
         filename="resume.json",
         title="Keep me",
     )
-    job = await _make_parse_job(db_session, user_id=user_id, resume_id=resume.id, title="Keep me")
+    task = await _make_parse_task(db_session, user_id=user_id, resume_id=resume.id, title="Keep me")
 
-    await resume_service.parse_upload(db_session, job, (await _progress_spy())[1])
+    await resume_service.parse_upload(db_session, task, (await _progress_spy())[1])
 
     stored = await db_session.get(Resume, resume.id)
     assert stored is not None
@@ -213,11 +213,11 @@ async def test_parse_upload_json_invalid_marks_resume_failed(db_session) -> None
     resume = await resume_service.create_pending_import(
         db_session, user_id, source_type="json", raw=bad, filename="resume.json"
     )
-    job = await _make_parse_job(db_session, user_id=user_id, resume_id=resume.id, file_bytes=bad)
+    task = await _make_parse_task(db_session, user_id=user_id, resume_id=resume.id, file_bytes=bad)
     _, update_progress = await _progress_spy()
 
     with pytest.raises(InvalidResumeFileError):
-        await resume_service.parse_upload(db_session, job, update_progress)
+        await resume_service.parse_upload(db_session, task, update_progress)
 
     stored = await db_session.get(Resume, resume.id)
     assert stored is not None
@@ -239,7 +239,7 @@ async def test_parse_upload_pdf_calls_parser_and_completes(db_session, monkeypat
     resume = await resume_service.create_pending_import(
         db_session, user_id, source_type="pdf", raw=b"%PDF-fake", filename="resume.pdf"
     )
-    job = await _make_parse_job(
+    task = await _make_parse_task(
         db_session,
         user_id=user_id,
         resume_id=resume.id,
@@ -249,7 +249,7 @@ async def test_parse_upload_pdf_calls_parser_and_completes(db_session, monkeypat
     )
     _, update_progress = await _progress_spy()
 
-    await resume_service.parse_upload(db_session, job, update_progress)
+    await resume_service.parse_upload(db_session, task, update_progress)
 
     stored = await db_session.get(Resume, resume.id)
     assert stored is not None
@@ -267,7 +267,7 @@ async def test_parse_upload_pdf_failure_marks_resume_failed(db_session, monkeypa
     resume = await resume_service.create_pending_import(
         db_session, user_id, source_type="pdf", raw=b"%PDF-fake", filename="resume.pdf"
     )
-    job = await _make_parse_job(
+    task = await _make_parse_task(
         db_session,
         user_id=user_id,
         resume_id=resume.id,
@@ -278,7 +278,7 @@ async def test_parse_upload_pdf_failure_marks_resume_failed(db_session, monkeypa
     _, update_progress = await _progress_spy()
 
     with pytest.raises(RuntimeError):
-        await resume_service.parse_upload(db_session, job, update_progress)
+        await resume_service.parse_upload(db_session, task, update_progress)
 
     stored = await db_session.get(Resume, resume.id)
     assert stored is not None
@@ -288,11 +288,11 @@ async def test_parse_upload_pdf_failure_marks_resume_failed(db_session, monkeypa
 
 async def test_parse_upload_unknown_resume_raises_not_found(db_session) -> None:
     user_id = uuid.uuid4()
-    job = await _make_parse_job(db_session, user_id=user_id, resume_id=uuid.uuid4())
+    task = await _make_parse_task(db_session, user_id=user_id, resume_id=uuid.uuid4())
     _, update_progress = await _progress_spy()
 
     with pytest.raises(NotFoundError):
-        await resume_service.parse_upload(db_session, job, update_progress)
+        await resume_service.parse_upload(db_session, task, update_progress)
 
 
 async def test_list_resumes_scopes_orders_and_excludes_deleted(db_session) -> None:

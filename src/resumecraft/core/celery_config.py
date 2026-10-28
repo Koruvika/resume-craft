@@ -18,8 +18,8 @@ def configure_celery(app: Celery, settings: Settings) -> None:
         task_acks_late=True,
         task_reject_on_worker_lost=True,
         task_track_started=True,
-        # Global autoretry for tasks that raise; job tasks swallow their own
-        # errors (they mark the Job FAILED instead).
+        # Global autoretry for tasks that raise; run_task-wrapped tasks swallow their own
+        # errors (they mark the Task row FAILED instead).
         task_autoretry_for=(Exception,),
         task_annotations={"*": {"max_retries": settings.celery_max_retries}},
         task_default_retry_delay=settings.celery_retry_delay,
